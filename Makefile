@@ -11,6 +11,9 @@ build:
 test:
 	go test ./...
 
+migrate:
+	./devenv go run ./cmd/migrate
+
 up:
 	docker compose --profile prod up --build
 

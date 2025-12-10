@@ -30,12 +30,13 @@ Goal: build a partial, commercetools-compatible web API (projects, products, car
 - Password hashing via bcrypt/argon2; store hash only.
 
 ### Dev/Infra
-- Docker Compose: base `docker-compose.yml` defines all containers (db, api, api-dev, dev) and port mappings. `docker-compose.app.yml` isolates the app service definition (prod). `api` is under the `prod` profile. `api-dev` uses the Dockerfile `dev` target, mounts the repo, and runs `air` for live reload under the `dev` profile. `dev` service is a helper shell for commands, also under the `dev` profile.
+- Docker Compose: base `docker-compose.yml` defines all containers (db, migrate, api, api-dev, dev) and port mappings. `docker-compose.app.yml` now holds shared service definitions: `app` (builds the app image) and `dev-base` (dev image/volumes/env). `migrate` extends `app` to run `golang-migrate` once (profiles `prod` and `dev`) before `api`/`api-dev` (depends_on service_completed_successfully); it overrides entrypoint to `/srv/migrate`. `api` is under the `prod` profile. `api-dev` extends `dev-base`, mounts the repo, and runs `air` for live reload under the `dev` profile. `dev` extends `dev-base` as a helper shell.
 - Makefile targets (planned): `make run`, `make test`, `make migrate-up/down`, `make lint`, `make seed`. `make up`/`down` target the `prod` profile; `make up-dev`/`down-dev` target the `dev` profile (starts db + api-dev + dev).
 - Local env: `.env.example` for app and DB credentials; default ports for Postgres.
+- Migrations: embedded SQL in `internal/migrate/sql` using `golang-migrate` (iofs + postgres driver); applied automatically on API start and via `cmd/migrate` CLI.
 - Observability: structured logs; basic request metrics later.
 - Health endpoints: `/healthz` and `/readyz` (Kubernetes-style suffix) reserved for probes, separate from business routes.
-- Dev container: `dev` (Dockerfile `dev` target, repo mounted, bash) for running commands inside the compose network; start with `make up-dev`, and use `./devenv` to exec into it. `api-dev` runs with hot-reload (`air`) on the same profile.
+- Dev container: `dev` (Dockerfile `dev` target, repo mounted, bash) for running commands inside the compose network; start with `make up-dev`, and use `./devenv` to exec into it. `api-dev` runs with hot-reload (`air`) on the same profile, after `migrate` completes.
 
 ### Near-Term Tasks
 1) Scaffold Go module, folder layout (`cmd/api`, `internal/{http,service,repo,domain}`), config loading, logger.

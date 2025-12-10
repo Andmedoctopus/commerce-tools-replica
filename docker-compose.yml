@@ -18,50 +18,49 @@ services:
   api:
     extends:
       file: docker-compose.app.yml
-      service: api
+      service: app
     depends_on:
-      db:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
     profiles:
       - prod
 
-  api-dev:
-    build:
-      context: .
-      target: dev
-    command: ["air", "-c", ".air.toml"]
-    working_dir: /workspace
-    volumes:
-      - .:/workspace
+  migrate:
+    extends:
+      file: docker-compose.app.yml
+      service: app
     depends_on:
       db:
         condition: service_healthy
-    environment:
-      HTTP_ADDR: ":8080"
-      DB_DSN: "postgres://commerce:commerce@db:5432/commerce?sslmode=disable"
-      SHUTDOWN_TIMEOUT_SECONDS: "10"
+    entrypoint: ["/srv/migrate"]
+    command: []
+    profiles:
+      - prod
+      - dev
+
+  api-dev:
+    extends:
+      file: docker-compose.app.yml
+      service: dev-base
+    command: ["air", "-c", ".air.toml"]
+    depends_on:
+      db:
+        condition: service_healthy
     ports:
       - "8080:8080"
     profiles:
       - dev
 
   dev:
-    build:
-      context: .
-      target: dev
+    extends:
+      file: docker-compose.app.yml
+      service: dev-base
     command: ["sleep", "infinity"]
-    working_dir: /workspace
-    volumes:
-      - .:/workspace
     depends_on:
       db:
         condition: service_healthy
-    environment:
-      HTTP_ADDR: ":8080"
-      DB_DSN: "postgres://commerce:commerce@db:5432/commerce?sslmode=disable"
-      SHUTDOWN_TIMEOUT_SECONDS: "10"
     profiles:
       - dev
 
