@@ -34,6 +34,7 @@ Goal: build a partial, commercetools-compatible web API (projects, products, car
 - Makefile targets (planned): `make run`, `make test`, `make migrate-up/down`, `make lint`, `make seed`.
 - Local env: `.env.example` for app and DB credentials; default ports for Postgres.
 - Observability: structured logs; basic request metrics later.
+- Health endpoints: `/healthz` and `/readyz` (Kubernetes-style suffix) reserved for probes, separate from business routes.
 
 ### Near-Term Tasks
 1) Scaffold Go module, folder layout (`cmd/api`, `internal/{http,service,repo,domain}`), config loading, logger.

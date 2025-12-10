@@ -1,6 +1,6 @@
 APP_NAME=api
 
-.PHONY: run build test compose-up compose-down
+.PHONY: run build test up down
 
 run:
 	go run ./cmd/api
@@ -11,8 +11,8 @@ build:
 test:
 	go test ./...
 
-compose-up:
+up:
 	docker compose up --build
 
-compose-down:
+down:
 	docker compose down
