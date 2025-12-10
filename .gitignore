@@ -1,0 +1,16 @@
+# Build and cache
+bin/
+.cache/
+
+# Binaries/tests
+*.test
+
+# Environment
+.env
+
+# IDE/editor
+.idea/
+.vscode/
+
+# OS files
+.DS_Store

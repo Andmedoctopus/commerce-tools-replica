@@ -1,0 +1,20 @@
+# Build artifacts
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+*.test
+
+# VCS and tooling
+.git
+.gitignore
+.DS_Store
+
+# Editor/IDE
+.vscode
+.idea
+
+# Local environment
+.env
+tmp/
