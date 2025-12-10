@@ -30,11 +30,12 @@ Goal: build a partial, commercetools-compatible web API (projects, products, car
 - Password hashing via bcrypt/argon2; store hash only.
 
 ### Dev/Infra
-- Docker Compose: Postgres service + app service (Go binary) with env-configured DSN. App depends_on DB and runs migrations on start.
-- Makefile targets (planned): `make run`, `make test`, `make migrate-up/down`, `make lint`, `make seed`.
+- Docker Compose: base `docker-compose.yml` defines all containers (db, api, api-dev, dev) and port mappings. `docker-compose.app.yml` isolates the app service definition (prod). `api` is under the `prod` profile. `api-dev` uses the Dockerfile `dev` target, mounts the repo, and runs `air` for live reload under the `dev` profile. `dev` service is a helper shell for commands, also under the `dev` profile.
+- Makefile targets (planned): `make run`, `make test`, `make migrate-up/down`, `make lint`, `make seed`. `make up`/`down` target the `prod` profile; `make up-dev`/`down-dev` target the `dev` profile (starts db + api-dev + dev).
 - Local env: `.env.example` for app and DB credentials; default ports for Postgres.
 - Observability: structured logs; basic request metrics later.
 - Health endpoints: `/healthz` and `/readyz` (Kubernetes-style suffix) reserved for probes, separate from business routes.
+- Dev container: `dev` (Dockerfile `dev` target, repo mounted, bash) for running commands inside the compose network; start with `make up-dev`, and use `./devenv` to exec into it. `api-dev` runs with hot-reload (`air`) on the same profile.
 
 ### Near-Term Tasks
 1) Scaffold Go module, folder layout (`cmd/api`, `internal/{http,service,repo,domain}`), config loading, logger.

@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# Ensure dev container is running (start with `make up-dev` if not).
+if ! docker compose --profile dev ps --status=running --services | grep -q "^dev$"; then
+  echo "dev container is not running. Start it with 'make up-dev'." >&2
+  exit 1
+fi
+
+if [ $# -eq 0 ]; then
+  docker compose --profile dev exec -it dev bash
+else
+  docker compose --profile dev exec -it dev "$@"
+fi

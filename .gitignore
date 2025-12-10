@@ -1,6 +1,7 @@
 # Build and cache
 bin/
 .cache/
+tmp/
 
 # Binaries/tests
 *.test
