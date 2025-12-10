@@ -1,4 +1,4 @@
-FROM golang:1.23-alpine AS build
+FROM golang:1.25-alpine AS build
 WORKDIR /app
 
 COPY go.mod ./
@@ -11,10 +11,10 @@ COPY . .
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     go build -o /bin/api ./cmd/api
 
-FROM golang:1.23-alpine AS dev
+FROM golang:1.25-alpine AS dev
 WORKDIR /workspace
 RUN apk add --no-cache git bash build-base
-RUN GOBIN=/usr/local/bin go install github.com/cosmtrek/air@latest
+RUN GOBIN=/usr/local/bin go install github.com/air-verse/air@v1.63.4
 
 FROM alpine:3.20
 WORKDIR /srv

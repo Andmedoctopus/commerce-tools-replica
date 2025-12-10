@@ -7,26 +7,19 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Server wraps the HTTP server setup.
 type Server struct {
 	httpServer *http.Server
 	logger     *log.Logger
+	db         *pgxpool.Pool
 }
 
 // New builds a Server with basic routes.
-func New(addr string, logger *log.Logger) *Server {
-	gin.SetMode(gin.ReleaseMode)
-	router := gin.New()
-	router.Use(gin.LoggerWithWriter(logger.Writer()), gin.Recovery())
-
-	router.GET("/healthz", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-	})
-	router.GET("/readyz", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"status": "ready"})
-	})
+func New(addr string, logger *log.Logger, db *pgxpool.Pool) *Server {
+	router := buildRouter(logger, db)
 
 	httpSrv := &http.Server{
 		Addr:              addr,
@@ -37,6 +30,7 @@ func New(addr string, logger *log.Logger) *Server {
 	return &Server{
 		httpServer: httpSrv,
 		logger:     logger,
+		db:         db,
 	}
 }
 
@@ -48,4 +42,24 @@ func (s *Server) ListenAndServe() error {
 // Shutdown gracefully stops the HTTP server.
 func (s *Server) Shutdown(ctx context.Context) error {
 	return s.httpServer.Shutdown(ctx)
+}
+
+func healthHandler(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func readyHandler(db *pgxpool.Pool) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if db == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable", "reason": "db not configured"})
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), time.Second)
+		defer cancel()
+		if err := db.Ping(ctx); err != nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "unavailable", "reason": "db not reachable"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ready"})
+	}
 }

@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"commercetools-replica/internal/config"
+	"commercetools-replica/internal/db"
 	"commercetools-replica/internal/httpserver"
 )
 
@@ -17,7 +18,14 @@ func main() {
 	cfg := config.FromEnv()
 	logger := log.New(os.Stdout, "[api] ", log.LstdFlags|log.LUTC|log.Lshortfile)
 
-	srv := httpserver.New(cfg.HTTPAddr, logger)
+	ctx := context.Background()
+	dbpool, err := db.Connect(ctx, cfg.DBConnString)
+	if err != nil {
+		logger.Fatalf("connect to db: %v", err)
+	}
+	defer dbpool.Close()
+
+	srv := httpserver.New(cfg.HTTPAddr, logger, dbpool)
 
 	serverErr := make(chan error, 1)
 	go func() {
