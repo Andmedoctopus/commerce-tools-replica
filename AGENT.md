@@ -31,6 +31,7 @@ Goal: build a partial, commercetools-compatible web API (projects, products, car
 
 ### Dev/Infra
 - Docker Compose: base `docker-compose.yml` defines all containers (db, db-test, migrate, api, api-dev, dev) and port mappings. `docker-compose.app.yml` holds shared service definitions: `app` (builds the app image), `dev-base` (dev image/volumes/env), `db` (primary Postgres). `db-test` in the base compose extends `db` with overridden env/volume/healthcheck for an isolated test database. `migrate` extends `app` to run `golang-migrate` once before `api`/`api-dev`; it overrides entrypoint to `/srv/migrate`. `api-dev` extends `dev-base`, mounts the repo, and runs `air` for live reload. `dev` extends `dev-base` as a helper shell and depends on both db and db-test.
+- Dev Go cache: bind-mounted to `./_gocache/mod` and `./_gocache/build` so `docker compose down -v` won’t erase caches.
 - Seeds: `cmd/seed` applies basic demo data (project "demo" + sample products). Use `make seed` (runs inside dev container) after migrations.
 - Makefile targets (planned): `make run`, `make test`, `make migrate-up/down`, `make lint`, `make seed`. `make up`/`down` target the `prod` profile; `make up-dev`/`down-dev` target the `dev` profile (starts db + api-dev + dev).
 - Local env: `.env.example` for app and DB credentials; default ports for Postgres.
