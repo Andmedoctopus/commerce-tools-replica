@@ -19,8 +19,10 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 
 FROM golang:1.25-alpine AS dev
 WORKDIR /workspace
-RUN apk add --no-cache git bash build-base
-RUN GOBIN=/usr/local/bin go install github.com/air-verse/air@v1.63.4
+RUN --mount=type=cache,target=/var/cache/apk \
+    apk add --no-cache git bash build-base
+RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
+    GOBIN=/usr/local/bin go install github.com/air-verse/air@v1.63.4
 
 FROM alpine:3.20
 WORKDIR /srv
