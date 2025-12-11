@@ -12,6 +12,7 @@ import (
 	"commercetools-replica/internal/config"
 	"commercetools-replica/internal/db"
 	"commercetools-replica/internal/httpserver"
+	projectrepo "commercetools-replica/internal/repository/project"
 )
 
 func main() {
@@ -25,7 +26,11 @@ func main() {
 	}
 	defer dbpool.Close()
 
-	srv := httpserver.New(cfg.HTTPAddr, logger, dbpool)
+	projectRepo := projectrepo.NewPostgres(dbpool)
+
+	srv := httpserver.New(cfg.HTTPAddr, logger, dbpool, httpserver.Deps{
+		ProjectRepo: projectRepo,
+	})
 
 	serverErr := make(chan error, 1)
 	go func() {

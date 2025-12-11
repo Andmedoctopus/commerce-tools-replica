@@ -18,8 +18,8 @@ type Server struct {
 }
 
 // New builds a Server with basic routes.
-func New(addr string, logger *log.Logger, db *pgxpool.Pool) *Server {
-	router := buildRouter(logger, db)
+func New(addr string, logger *log.Logger, db *pgxpool.Pool, deps Deps) *Server {
+	router := buildRouter(logger, db, deps)
 
 	httpSrv := &http.Server{
 		Addr:              addr,
