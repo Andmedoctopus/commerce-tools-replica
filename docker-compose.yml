@@ -1,19 +1,33 @@
 services:
   db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: commerce
-      POSTGRES_USER: commerce
-      POSTGRES_PASSWORD: commerce
+    extends:
+      file: docker-compose.app.yml
+      service: db
     ports:
       - "5432:5432"
+    profiles:
+      - prod
+      - dev
+      - test
+
+  db-test:
+    extends:
+      file: docker-compose.app.yml
+      service: db
+    environment:
+      POSTGRES_DB: commerce_test
+      POSTGRES_USER: commerce
+      POSTGRES_PASSWORD: commerce
     volumes:
-      - db_data:/var/lib/postgresql/data
+      - db_test_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U commerce -d commerce"]
+      test: ["CMD-SHELL", "pg_isready -U commerce -d commerce_test"]
       interval: 5s
       timeout: 3s
       retries: 5
+    profiles:
+      - dev
+      - test
 
   api:
     extends:
@@ -48,6 +62,8 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
     ports:
       - "8080:8080"
     profiles:
@@ -61,8 +77,13 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      db-test:
+        condition: service_healthy
     profiles:
       - dev
 
 volumes:
   db_data:
+  db_test_data:
+  go_mod_cache:
+  go_build_cache:

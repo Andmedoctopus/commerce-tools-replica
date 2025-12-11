@@ -30,7 +30,7 @@ Goal: build a partial, commercetools-compatible web API (projects, products, car
 - Password hashing via bcrypt/argon2; store hash only.
 
 ### Dev/Infra
-- Docker Compose: base `docker-compose.yml` defines all containers (db, migrate, api, api-dev, dev) and port mappings. `docker-compose.app.yml` now holds shared service definitions: `app` (builds the app image) and `dev-base` (dev image/volumes/env). `migrate` extends `app` to run `golang-migrate` once (profiles `prod` and `dev`) before `api`/`api-dev` (depends_on service_completed_successfully); it overrides entrypoint to `/srv/migrate`. `api` is under the `prod` profile. `api-dev` extends `dev-base`, mounts the repo, and runs `air` for live reload under the `dev` profile. `dev` extends `dev-base` as a helper shell.
+- Docker Compose: base `docker-compose.yml` defines all containers (db, db-test, migrate, api, api-dev, dev) and port mappings. `docker-compose.app.yml` holds shared service definitions: `app` (builds the app image), `dev-base` (dev image/volumes/env), `db` (primary Postgres). `db-test` in the base compose extends `db` with overridden env/volume for an isolated test database. `migrate` extends `app` to run `golang-migrate` once (profiles `prod` and `dev`) before `api`/`api-dev`; it overrides entrypoint to `/srv/migrate`. `api` is under the `prod` profile. `api-dev` extends `dev-base`, mounts the repo, and runs `air` for live reload under the `dev` profile. `dev` extends `dev-base` as a helper shell and depends on both db and db-test.
 - Seeds: `cmd/seed` applies basic demo data (project "demo" + sample products). Use `make seed` (runs inside dev container) after migrations.
 - Makefile targets (planned): `make run`, `make test`, `make migrate-up/down`, `make lint`, `make seed`. `make up`/`down` target the `prod` profile; `make up-dev`/`down-dev` target the `dev` profile (starts db + api-dev + dev).
 - Local env: `.env.example` for app and DB credentials; default ports for Postgres.
@@ -38,6 +38,7 @@ Goal: build a partial, commercetools-compatible web API (projects, products, car
 - Observability: structured logs; basic request metrics later.
 - Health endpoints: `/healthz` and `/readyz` (Kubernetes-style suffix) reserved for probes, separate from business routes.
 - Dev container: `dev` (Dockerfile `dev` target, repo mounted, bash) for running commands inside the compose network; start with `make up-dev`, and use `./devenv` to exec into it. `api-dev` runs with hot-reload (`air`) on the same profile, after `migrate` completes.
+- Error handling: required context values (e.g., project/auth) are treated as invariants; handlers may panic when missing so recovery returns 500 and logs the issue instead of leaking internal details to clients.
 
 ### Near-Term Tasks
 1) Scaffold Go module, folder layout (`cmd/api`, `internal/{http,service,repo,domain}`), config loading, logger.

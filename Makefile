@@ -1,15 +1,18 @@
 APP_NAME=api
 
-.PHONY: run build test up down up-dev down-dev
+.PHONY: run build test up down up-dev down-dev migrate seed
 
 run:
-	go run ./cmd/api
+	docker compose --profile dev run --rm dev go run ./cmd/api
 
 build:
-	go build -o bin/$(APP_NAME) ./cmd/api
+	docker compose --profile dev run --rm dev go build -o bin/$(APP_NAME) ./cmd/api
 
 test:
-	go test ./...
+	docker compose --profile dev up -d db-test
+	docker compose --profile dev run --rm \
+		-e TEST_DB_DSN="postgres://commerce:commerce@db-test:5432/commerce_test?sslmode=disable" \
+		dev go test ./...
 
 migrate:
 	./devenv go run ./cmd/migrate

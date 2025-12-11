@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"commercetools-replica/internal/domain"
+	cartsvc "commercetools-replica/internal/service/cart"
 	"github.com/gin-gonic/gin"
 )
 
@@ -125,6 +126,16 @@ func (s *stubProductService) Get(_ context.Context, _ string, _ string) (*domain
 	return s.getResult, s.err
 }
 
+type stubCartService struct{}
+
+func (s *stubCartService) Create(_ context.Context, _ string, _ cartsvc.CreateInput) (*domain.Cart, error) {
+	return nil, nil
+}
+
+func (s *stubCartService) Get(_ context.Context, _ string, _ string) (*domain.Cart, error) {
+	return nil, nil
+}
+
 func TestProductsHandler_List(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	proj := &domain.Project{ID: "proj-id", Key: "proj-key"}
@@ -134,9 +145,11 @@ func TestProductsHandler_List(t *testing.T) {
 			{ID: "p1", ProjectID: proj.ID, Name: "Demo"},
 		},
 	}
+	cartSvc := &stubCartService{}
 	router, err := buildRouter(logDiscard(), nil, Deps{
 		ProjectRepo: projectRepo,
 		ProductSvc:  productSvc,
+		CartSvc:     cartSvc,
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -162,9 +175,11 @@ func TestProductsHandler_Get_NotFound(t *testing.T) {
 	productSvc := &stubProductService{
 		err: domain.ErrNotFound,
 	}
+	cartSvc := &stubCartService{}
 	router, err := buildRouter(logDiscard(), nil, Deps{
 		ProjectRepo: projectRepo,
 		ProductSvc:  productSvc,
+		CartSvc:     cartSvc,
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)

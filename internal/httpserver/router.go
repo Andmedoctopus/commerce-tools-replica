@@ -8,6 +8,7 @@ import (
 
 	"commercetools-replica/internal/domain"
 	projectrepo "commercetools-replica/internal/repository/project"
+	cartsvc "commercetools-replica/internal/service/cart"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -17,9 +18,15 @@ type productService interface {
 	Get(ctx context.Context, projectID, id string) (*domain.Product, error)
 }
 
+type cartService interface {
+	Create(ctx context.Context, projectID string, in cartsvc.CreateInput) (*domain.Cart, error)
+	Get(ctx context.Context, projectID, id string) (*domain.Cart, error)
+}
+
 type Deps struct {
 	ProjectRepo projectrepo.Repository
 	ProductSvc  productService
+	CartSvc     cartService
 }
 
 func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, error) {
@@ -28,6 +35,9 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 	}
 	if deps.ProductSvc == nil {
 		return nil, errors.New("ProductSvc is required")
+	}
+	if deps.CartSvc == nil {
+		return nil, errors.New("CartSvc is required")
 	}
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
@@ -62,10 +72,32 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 			c.JSON(http.StatusOK, p)
 		})
 		projectGroup.POST("/carts", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"message": "cart create placeholder"})
+			project := mustProject(c)
+			var req cartsvc.CreateInput
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+				return
+			}
+			cart, err := deps.CartSvc.Create(c.Request.Context(), project.ID, req)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusCreated, cart)
 		})
 		projectGroup.GET("/carts/:id", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"message": "cart get placeholder"})
+			project := mustProject(c)
+			id := c.Param("id")
+			cart, err := deps.CartSvc.Get(c.Request.Context(), project.ID, id)
+			if err != nil {
+				if err == domain.ErrNotFound {
+					c.JSON(http.StatusNotFound, gin.H{"error": "cart not found"})
+					return
+				}
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "get cart failed"})
+				return
+			}
+			c.JSON(http.StatusOK, cart)
 		})
 	}
 
