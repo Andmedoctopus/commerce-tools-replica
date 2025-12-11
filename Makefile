@@ -24,7 +24,7 @@ up:
 	docker compose --profile prod up --build
 
 down:
-	docker compose down
+	docker compose down --remove-orphans
 
 up-dev:
 	docker compose --profile dev up --build -d
