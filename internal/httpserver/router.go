@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 
@@ -11,11 +12,23 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
-type Deps struct {
-	ProjectRepo projectrepo.Repository
+type productService interface {
+	List(ctx context.Context, projectID string) ([]domain.Product, error)
+	Get(ctx context.Context, projectID, id string) (*domain.Product, error)
 }
 
-func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) *gin.Engine {
+type Deps struct {
+	ProjectRepo projectrepo.Repository
+	ProductSvc  productService
+}
+
+func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, error) {
+	if deps.ProjectRepo == nil {
+		return nil, errors.New("ProjectRepo is required")
+	}
+	if deps.ProductSvc == nil {
+		return nil, errors.New("ProductSvc is required")
+	}
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.LoggerWithWriter(logger.Writer()), gin.Recovery())
@@ -26,11 +39,27 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) *gin.Engine {
 	projectGroup := router.Group("/projects/:projectKey", projectMiddleware(deps.ProjectRepo))
 	{
 		projectGroup.GET("/products", func(c *gin.Context) {
-			// Placeholder: will list products for project
-			c.JSON(http.StatusOK, gin.H{"message": "products endpoint placeholder"})
+			project := mustProject(c)
+			products, err := deps.ProductSvc.List(c.Request.Context(), project.ID)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "list products failed"})
+				return
+			}
+			c.JSON(http.StatusOK, products)
 		})
 		projectGroup.GET("/products/:id", func(c *gin.Context) {
-			c.JSON(http.StatusOK, gin.H{"message": "product detail placeholder"})
+			project := mustProject(c)
+			id := c.Param("id")
+			p, err := deps.ProductSvc.Get(c.Request.Context(), project.ID, id)
+			if err != nil {
+				if err == domain.ErrNotFound {
+					c.JSON(http.StatusNotFound, gin.H{"error": "product not found"})
+					return
+				}
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "get product failed"})
+				return
+			}
+			c.JSON(http.StatusOK, p)
 		})
 		projectGroup.POST("/carts", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"message": "cart create placeholder"})
@@ -40,7 +69,7 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) *gin.Engine {
 		})
 	}
 
-	return router
+	return router, nil
 }
 
 type ctxKey string
@@ -68,6 +97,29 @@ func projectMiddleware(repo projectrepo.Repository) gin.HandlerFunc {
 		}
 		ctx := context.WithValue(c.Request.Context(), projectCtxKey, project)
 		c.Request = c.Request.WithContext(ctx)
+		c.Set(string(projectCtxKey), project)
 		c.Next()
 	}
+}
+
+func currentProject(c *gin.Context) *domain.Project {
+	if val, ok := c.Get(string(projectCtxKey)); ok {
+		if p, ok := val.(*domain.Project); ok {
+			return p
+		}
+	}
+	if val := c.Request.Context().Value(projectCtxKey); val != nil {
+		if p, ok := val.(*domain.Project); ok {
+			return p
+		}
+	}
+	return nil
+}
+
+func mustProject(c *gin.Context) *domain.Project {
+	p := currentProject(c)
+	if p == nil {
+		panic("project missing in context")
+	}
+	return p
 }

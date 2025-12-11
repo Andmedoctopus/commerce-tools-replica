@@ -3,6 +3,8 @@ package httpserver
 import (
 	"context"
 	"errors"
+	"io"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -28,9 +30,16 @@ func TestProjectMiddleware_Success(t *testing.T) {
 	router := gin.New()
 	router.Use(projectMiddleware(repo))
 	router.GET("/projects/:projectKey/test", func(c *gin.Context) {
-		p := c.Request.Context().Value(projectCtxKey)
-		if p == nil {
-			t.Fatalf("expected project in context")
+		pCtx := c.Request.Context().Value(projectCtxKey)
+		if pCtx == nil {
+			t.Fatalf("expected project in request context")
+		}
+		if _, ok := pCtx.(*domain.Project); !ok {
+			t.Fatalf("unexpected project type in context")
+		}
+		pGin, exists := c.Get(string(projectCtxKey))
+		if !exists || pGin == nil {
+			t.Fatalf("expected project in gin context")
 		}
 		c.Status(http.StatusOK)
 	})
@@ -100,4 +109,77 @@ func TestProjectMiddleware_MissingKey(t *testing.T) {
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("expected status 400, got %d", rec.Code)
 	}
+}
+
+type stubProductService struct {
+	listResult []domain.Product
+	getResult  *domain.Product
+	err        error
+}
+
+func (s *stubProductService) List(_ context.Context, _ string) ([]domain.Product, error) {
+	return s.listResult, s.err
+}
+
+func (s *stubProductService) Get(_ context.Context, _ string, _ string) (*domain.Product, error) {
+	return s.getResult, s.err
+}
+
+func TestProductsHandler_List(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	proj := &domain.Project{ID: "proj-id", Key: "proj-key"}
+	projectRepo := &stubProjectRepo{project: proj}
+	productSvc := &stubProductService{
+		listResult: []domain.Product{
+			{ID: "p1", ProjectID: proj.ID, Name: "Demo"},
+		},
+	}
+	router, err := buildRouter(logDiscard(), nil, Deps{
+		ProjectRepo: projectRepo,
+		ProductSvc:  productSvc,
+	})
+	if err != nil {
+		t.Fatalf("build router: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/projects/proj-key/products", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if body := rec.Body.String(); body == "" || body == "null" {
+		t.Fatalf("expected response body, got %q", body)
+	}
+}
+
+func TestProductsHandler_Get_NotFound(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	proj := &domain.Project{ID: "proj-id", Key: "proj-key"}
+	projectRepo := &stubProjectRepo{project: proj}
+	productSvc := &stubProductService{
+		err: domain.ErrNotFound,
+	}
+	router, err := buildRouter(logDiscard(), nil, Deps{
+		ProjectRepo: projectRepo,
+		ProductSvc:  productSvc,
+	})
+	if err != nil {
+		t.Fatalf("build router: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/projects/proj-key/products/abc", nil)
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("expected status 404, got %d", rec.Code)
+	}
+}
+
+func logDiscard() *log.Logger {
+	return log.New(io.Discard, "", 0)
 }

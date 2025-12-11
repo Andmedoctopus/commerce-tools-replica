@@ -12,7 +12,9 @@ import (
 	"commercetools-replica/internal/config"
 	"commercetools-replica/internal/db"
 	"commercetools-replica/internal/httpserver"
+	productrepo "commercetools-replica/internal/repository/product"
 	projectrepo "commercetools-replica/internal/repository/project"
+	productsvc "commercetools-replica/internal/service/product"
 )
 
 func main() {
@@ -27,10 +29,16 @@ func main() {
 	defer dbpool.Close()
 
 	projectRepo := projectrepo.NewPostgres(dbpool)
+	productRepo := productrepo.NewPostgres(dbpool)
+	productService := productsvc.New(productRepo)
 
-	srv := httpserver.New(cfg.HTTPAddr, logger, dbpool, httpserver.Deps{
+	srv, err := httpserver.New(cfg.HTTPAddr, logger, dbpool, httpserver.Deps{
 		ProjectRepo: projectRepo,
+		ProductSvc:  productService,
 	})
+	if err != nil {
+		logger.Fatalf("init server: %v", err)
+	}
 
 	serverErr := make(chan error, 1)
 	go func() {

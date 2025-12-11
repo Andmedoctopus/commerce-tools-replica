@@ -18,8 +18,11 @@ type Server struct {
 }
 
 // New builds a Server with basic routes.
-func New(addr string, logger *log.Logger, db *pgxpool.Pool, deps Deps) *Server {
-	router := buildRouter(logger, db, deps)
+func New(addr string, logger *log.Logger, db *pgxpool.Pool, deps Deps) (*Server, error) {
+	router, err := buildRouter(logger, db, deps)
+	if err != nil {
+		return nil, err
+	}
 
 	httpSrv := &http.Server{
 		Addr:              addr,
@@ -31,7 +34,7 @@ func New(addr string, logger *log.Logger, db *pgxpool.Pool, deps Deps) *Server {
 		httpServer: httpSrv,
 		logger:     logger,
 		db:         db,
-	}
+	}, nil
 }
 
 // ListenAndServe starts the HTTP server.
