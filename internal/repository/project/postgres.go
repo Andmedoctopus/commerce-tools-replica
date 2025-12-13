@@ -33,3 +33,19 @@ WHERE key = $1
 	}
 	return &p, nil
 }
+
+func (r *postgresRepo) Create(ctx context.Context, project *domain.Project) (*domain.Project, error) {
+	const q = `
+INSERT INTO projects (key, name)
+VALUES ($1, $2)
+RETURNING id::text, created_at
+`
+	var out domain.Project
+	err := r.pool.QueryRow(ctx, q, project.Key, project.Name).Scan(&out.ID, &out.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	out.Key = project.Key
+	out.Name = project.Name
+	return &out, nil
+}

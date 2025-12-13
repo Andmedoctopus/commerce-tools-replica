@@ -5,6 +5,7 @@ import (
 	"os"
 	"testing"
 
+	"commercetools-replica/internal/domain"
 	"commercetools-replica/internal/migrate"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -51,6 +52,60 @@ func TestPostgres_ListAndGet(t *testing.T) {
 	}
 	if got.ID != pid || got.ProjectID != projectID {
 		t.Fatalf("unexpected product %+v", got)
+	}
+}
+
+func TestPostgres_Upsert(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(ctx, t)
+	defer pool.Close()
+
+	if err := migrate.Apply(ctx, pool); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+	resetTables(ctx, t, pool)
+
+	var projectID string
+	err := pool.QueryRow(ctx, `INSERT INTO projects (key, name) VALUES ('proj-key', 'Proj') RETURNING id::text`).Scan(&projectID)
+	if err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+
+	repo := NewPostgres(pool)
+
+	p, err := repo.Upsert(ctx, domain.Product{
+		ProjectID:  projectID,
+		Key:        "p1",
+		SKU:        "SKU1",
+		Name:       "Prod 1",
+		PriceCents: 100,
+		Currency:   "USD",
+	})
+	if err != nil {
+		t.Fatalf("Upsert insert: %v", err)
+	}
+	if p.ID == "" {
+		t.Fatalf("expected ID set")
+	}
+
+	updated, err := repo.Upsert(ctx, domain.Product{
+		ProjectID:  projectID,
+		Key:        "p1",
+		SKU:        "SKU-NEW",
+		Name:       "Prod 1 updated",
+		Description: "new desc",
+		PriceCents: 200,
+		Currency:   "USD",
+		Attributes: map[string]interface{}{"images": []string{"https://example.com/1.jpg"}},
+	})
+	if err != nil {
+		t.Fatalf("Upsert update: %v", err)
+	}
+	if updated.ID != p.ID {
+		t.Fatalf("expected same ID after update")
+	}
+	if updated.SKU != "SKU-NEW" || updated.Description != "new desc" || updated.PriceCents != 200 {
+		t.Fatalf("unexpected updated product %+v", updated)
 	}
 }
 

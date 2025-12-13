@@ -30,16 +30,15 @@ Goal: build a partial, commercetools-compatible web API (projects, products, car
 - Password hashing via bcrypt/argon2; store hash only.
 
 ### Dev/Infra
-- Docker Compose: base `docker-compose.yml` defines all containers (db, db-test, migrate, api, api-dev, dev) and port mappings. `docker-compose.app.yml` holds shared service definitions: `app` (builds the app image), `dev-base` (dev image/volumes/env), `db` (primary Postgres). `db-test` in the base compose extends `db` with overridden env/volume/healthcheck for an isolated test database. `migrate` extends `app` to run `golang-migrate` once before `api`/`api-dev`; it overrides entrypoint to `/srv/migrate`. `api-dev` extends `dev-base`, mounts the repo, and runs `air` for live reload. `dev` extends `dev-base` as a helper shell and depends on both db and db-test.
+- Docker Compose: `docker-compose.app.yml` holds shared service definitions (`app` build, `dev-base` dev image/volumes/env, `db`). Top-level `docker-compose.yml` wires everything with ports/depends_on and adds `db-test` (extends `db` with its own env/volume/healthcheck), `migrate` (extends `app`, entrypoint `/srv/migrate`, runs before API), `api` (prod server on host `8080`), `api-dev` (hot reload via `air`, exposed on host `8081` to avoid port clashes), and `dev` (helper shell). No profiles; `make up`/`down` manage the full stack.
 - Dev Go cache: bind-mounted to `./_gocache/mod` and `./_gocache/build` so `docker compose down -v` won’t erase caches.
 - Seeds: `cmd/seed` applies basic demo data (project "demo" + sample products). Use `make seed` (runs inside dev container) after migrations.
-- Makefile targets (planned): `make run`, `make test`, `make migrate-up/down`, `make lint`, `make seed`. `make up`/`down` target the `prod` profile; `make up-dev`/`down-dev` target the `dev` profile (starts db + api-dev + dev).
+- Makefile: `make run` (dev go run), `make build`, `make test` (brings up `db-test`, runs `go test` inside `dev`), `make migrate`, `make seed`, `make up`/`down` to start/stop services.
 - Local env: `.env.example` for app and DB credentials; default ports for Postgres.
-- Migrations: embedded SQL in `internal/migrate/sql` using `golang-migrate` (iofs + postgres driver); applied automatically on API start and via `cmd/migrate` CLI.
+- Migrations: embedded SQL in `internal/migrate/sql` using `golang-migrate` (iofs + postgres driver); applied via `cmd/migrate` and the `migrate` compose service (before `api`/`api-dev`).
 - Observability: structured logs; basic request metrics later.
 - Health endpoints: `/healthz` and `/readyz` (Kubernetes-style suffix) reserved for probes, separate from business routes.
-- Dev container: `dev` (Dockerfile `dev` target, repo mounted, bash) for running commands inside the compose network; start with `make up-dev`, and use `./devenv` to exec into it. `api-dev` runs with hot-reload (`air`) on the same profile, after `migrate` completes.
-- Error handling: required context values (e.g., project/auth) are treated as invariants; handlers may panic when missing so recovery returns 500 and logs the issue instead of leaking internal details to clients.
+- Dev container: `dev` (Dockerfile `dev` target, repo mounted, bash) for running commands inside the compose network; start `dev`/`api-dev` via compose and use `./devenv` to exec. Required context values (e.g., project/auth) are treated as invariants; handlers may panic when missing so recovery returns 500 and logs the issue instead of leaking internal details to clients.
 
 ### Near-Term Tasks
 1) Scaffold Go module, folder layout (`cmd/api`, `internal/{http,service,repo,domain}`), config loading, logger.
@@ -48,3 +47,8 @@ Goal: build a partial, commercetools-compatible web API (projects, products, car
 4) Implement product list/detail endpoints.
 5) Implement cart lifecycle (create/update lines/recalc totals/get/checkout stub) with project scoping.
 6) Add API docs stub (OpenAPI) and basic tests (unit + integration via docker-compose).
+
+### CSV Importer Usage
+- Import commercetools product export CSV: `./devenv go run ./cmd/importer -file imports/Products_Export_09-12-25_19-36.csv -project <project-key>`.
+- If the project key is missing, the importer will create it with name equal to the key.
+- The importer resolves/creates the project and upserts products (key/SKU/name/description/price/currency plus image URLs stored in `attributes.images`).

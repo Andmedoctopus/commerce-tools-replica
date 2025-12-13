@@ -60,3 +60,41 @@ WHERE project_id = $1 AND id = $2
 	}
 	return &p, nil
 }
+
+func (r *postgresRepo) Upsert(ctx context.Context, product domain.Product) (*domain.Product, error) {
+	const q = `
+INSERT INTO products (project_id, key, sku, name, description, price_cents, currency, attributes)
+VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7, COALESCE($8, '{}'::jsonb))
+ON CONFLICT (project_id, key) DO UPDATE SET
+    sku = EXCLUDED.sku,
+    name = EXCLUDED.name,
+    description = EXCLUDED.description,
+    price_cents = EXCLUDED.price_cents,
+    currency = EXCLUDED.currency,
+    attributes = EXCLUDED.attributes
+RETURNING id::text, created_at
+`
+	var res domain.Product
+	err := r.pool.QueryRow(ctx, q,
+		product.ProjectID,
+		product.Key,
+		product.SKU,
+		product.Name,
+		product.Description,
+		product.PriceCents,
+		product.Currency,
+		product.Attributes,
+	).Scan(&res.ID, &res.CreatedAt)
+	if err != nil {
+		return nil, err
+	}
+	res.ProjectID = product.ProjectID
+	res.Key = product.Key
+	res.SKU = product.SKU
+	res.Name = product.Name
+	res.Description = product.Description
+	res.PriceCents = product.PriceCents
+	res.Currency = product.Currency
+	res.Attributes = product.Attributes
+	return &res, nil
+}

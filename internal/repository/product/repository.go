@@ -9,4 +9,5 @@ import (
 type Repository interface {
 	ListByProject(ctx context.Context, projectID string) ([]domain.Product, error)
 	GetByID(ctx context.Context, projectID, id string) (*domain.Product, error)
+	Upsert(ctx context.Context, product domain.Product) (*domain.Product, error)
 }
