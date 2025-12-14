@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"commercetools-replica/internal/domain"
@@ -43,13 +44,19 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 	}
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
-	router.Use(gin.Recovery(), requestLogger(logger))
+	router.Use(gin.Recovery())
 	router.Use(cors.New(cors.Config{
-		AllowOrigins:     []string{"http://localhost", "http://localhost:*", "http://127.0.0.1", "http://127.0.0.1:*"},
+		AllowOriginFunc: func(origin string) bool {
+			// allow any localhost/127.x origin (any port)
+			return strings.Contains(origin, "localhost") || strings.Contains(origin, "127.0.0.1")
+		},
 		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
-		AllowHeaders:     []string{"Authorization", "Content-Type"},
+		AllowHeaders:     []string{"Authorization", "Content-Type", "Accept"},
 		AllowCredentials: true,
+		MaxAge:           12 * time.Hour,
+		AllowWildcard:    true,
 	}))
+	router.Use(requestLogger(logger))
 
 	router.GET("/healthz", healthHandler)
 	router.GET("/readyz", readyHandler(db))
@@ -165,13 +172,10 @@ func requestLogger(logger *log.Logger) gin.HandlerFunc {
 
 		proj := currentProject(c)
 		pid := ""
-		pkey := ""
+		pkey := c.Param("projectKey")
 		if proj != nil {
 			pid = proj.ID
 			pkey = proj.Key
-		}
-		if pkey == "" {
-			pkey = c.Param("projectKey")
 		}
 
 		logger.Printf("http %s %s status=%d dur=%s project_key=%s project_id=%s",
