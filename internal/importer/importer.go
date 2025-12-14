@@ -34,6 +34,7 @@ func NewCSVImporter(r io.Reader, repo ProductWriter, projectID string) *CSVImpor
 }
 
 type csvRow struct {
+	ID        string
 	Key       string
 	Name      string
 	Desc      string
@@ -101,6 +102,9 @@ func (i *CSVImporter) save(ctx context.Context, row *csvRow) error {
 	if row.Key == "" || row.Name == "" || row.SKU == "" || row.Cents == 0 || row.Currency == "" {
 		return fmt.Errorf("invalid product row (missing required fields) for key %q", row.Key)
 	}
+	if row.ID != "" && len(row.ID) != 36 {
+		return fmt.Errorf("invalid id for key %q: %s", row.Key, row.ID)
+	}
 
 	attrs := map[string]interface{}{}
 	if len(row.ImageURLs) > 0 {
@@ -108,6 +112,7 @@ func (i *CSVImporter) save(ctx context.Context, row *csvRow) error {
 	}
 
 	p := domain.Product{
+		ID:          row.ID,
 		ProjectID:   i.projectID,
 		Key:         row.Key,
 		SKU:         row.SKU,
@@ -134,6 +139,7 @@ func headerIndex(headers []string) map[string]int {
 }
 
 func parseRow(record []string, index map[string]int) *csvRow {
+	id := pick(record, index, "id")
 	key := pick(record, index, "key")
 	name := pick(record, index, "name.en")
 	desc := pick(record, index, "description.en")
@@ -159,6 +165,7 @@ func parseRow(record []string, index map[string]int) *csvRow {
 		SKU:      sku,
 		Cents:    cents,
 		Currency: currency,
+		ID:       id,
 	}
 	if imageURL != "" {
 		row.ImageURLs = []string{strings.TrimSpace(imageURL)}

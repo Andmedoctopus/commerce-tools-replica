@@ -109,6 +109,82 @@ func TestPostgres_Upsert(t *testing.T) {
 	}
 }
 
+func TestPostgres_UpsertWithProvidedID(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(ctx, t)
+	defer pool.Close()
+
+	if err := migrate.Apply(ctx, pool); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+	resetTables(ctx, t, pool)
+
+	var projectID string
+	if err := pool.QueryRow(ctx, `INSERT INTO projects (key, name) VALUES ('proj-key', 'Proj') RETURNING id::text`).Scan(&projectID); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+
+	repo := NewPostgres(pool, nil)
+	customID := "00000000-0000-0000-0000-000000000123"
+	p, err := repo.Upsert(ctx, domain.Product{
+		ID:         customID,
+		ProjectID:  projectID,
+		Key:        "p1",
+		SKU:        "SKU1",
+		Name:       "Prod 1",
+		PriceCents: 100,
+		Currency:   "USD",
+	})
+	if err != nil {
+		t.Fatalf("Upsert insert with id: %v", err)
+	}
+	if p.ID != customID {
+		t.Fatalf("expected id %s, got %s", customID, p.ID)
+	}
+}
+
+func TestPostgres_UpsertIDMismatch(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(ctx, t)
+	defer pool.Close()
+
+	if err := migrate.Apply(ctx, pool); err != nil {
+		t.Fatalf("apply migrations: %v", err)
+	}
+	resetTables(ctx, t, pool)
+
+	var projectID string
+	if err := pool.QueryRow(ctx, `INSERT INTO projects (key, name) VALUES ('proj-key', 'Proj') RETURNING id::text`).Scan(&projectID); err != nil {
+		t.Fatalf("insert project: %v", err)
+	}
+
+	repo := NewPostgres(pool, nil)
+	// First insert without provided ID.
+	if _, err := repo.Upsert(ctx, domain.Product{
+		ProjectID:  projectID,
+		Key:        "p1",
+		SKU:        "SKU1",
+		Name:       "Prod 1",
+		PriceCents: 100,
+		Currency:   "USD",
+	}); err != nil {
+		t.Fatalf("Upsert insert: %v", err)
+	}
+	// Second insert with conflicting ID should error.
+	_, err := repo.Upsert(ctx, domain.Product{
+		ID:         "00000000-0000-0000-0000-000000000321",
+		ProjectID:  projectID,
+		Key:        "p1",
+		SKU:        "SKU1",
+		Name:       "Prod 1",
+		PriceCents: 100,
+		Currency:   "USD",
+	})
+	if err == nil {
+		t.Fatalf("expected id mismatch error, got nil")
+	}
+}
+
 func testPool(ctx context.Context, t *testing.T) *pgxpool.Pool {
 	t.Helper()
 	dsn := os.Getenv("TEST_DB_DSN")

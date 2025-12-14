@@ -18,10 +18,10 @@ func (s *stubProductRepo) Upsert(_ context.Context, p domain.Product) (*domain.P
 }
 
 func TestCSVImporter_Run(t *testing.T) {
-	csvData := `key,name.en,description.en,variants.sku,variants.prices.value.centAmount,variants.prices.value.currencyCode,variants.images.url
-prod-1,Prod One,Desc one,SKU-1,100,EUR,https://example.com/img1.jpg
-,,,,,,https://example.com/img2.jpg
-prod-2,Prod Two,Desc two,SKU-2,200,USD,`
+	csvData := `id,key,name.en,description.en,variants.sku,variants.prices.value.centAmount,variants.prices.value.currencyCode,variants.images.url
+00000000-0000-0000-0000-000000000001,prod-1,Prod One,Desc one,SKU-1,100,EUR,https://example.com/img1.jpg
+,,,,,,,https://example.com/img2.jpg
+00000000-0000-0000-0000-000000000002,prod-2,Prod Two,Desc two,SKU-2,200,USD,`
 
 	repo := &stubProductRepo{}
 	imp := NewCSVImporter(strings.NewReader(csvData), repo, "project-123")
@@ -43,5 +43,8 @@ prod-2,Prod Two,Desc two,SKU-2,200,USD,`
 	}
 	if repo.items[0].Key != "prod-1" || repo.items[0].SKU != "SKU-1" || repo.items[0].PriceCents != 100 || repo.items[0].Currency != "EUR" {
 		t.Fatalf("unexpected product data: %+v", repo.items[0])
+	}
+	if repo.items[0].ID != "00000000-0000-0000-0000-000000000001" {
+		t.Fatalf("expected id to be preserved, got %s", repo.items[0].ID)
 	}
 }

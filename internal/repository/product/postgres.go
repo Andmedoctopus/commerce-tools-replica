@@ -3,6 +3,7 @@ package product
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"log"
 
@@ -75,8 +76,8 @@ WHERE project_id = $1 AND id = $2
 
 func (r *postgresRepo) Upsert(ctx context.Context, product domain.Product) (*domain.Product, error) {
 	const q = `
-INSERT INTO products (project_id, key, sku, name, description, price_cents, currency, attributes)
-VALUES ($1, $2, $3, $4, NULLIF($5, ''), $6, $7, COALESCE($8, '{}'::jsonb))
+INSERT INTO products (id, project_id, key, sku, name, description, price_cents, currency, attributes)
+VALUES (COALESCE(NULLIF($1, '')::uuid, gen_random_uuid()), $2, $3, $4, NULLIF($5, ''), $6, $7, $8, COALESCE($9, '{}'::jsonb))
 ON CONFLICT (project_id, key) DO UPDATE SET
     sku = EXCLUDED.sku,
     name = EXCLUDED.name,
@@ -88,6 +89,7 @@ RETURNING id::text, created_at
 `
 	var res domain.Product
 	err := r.pool.QueryRow(ctx, q,
+		product.ID,
 		product.ProjectID,
 		product.Key,
 		product.SKU,
@@ -100,6 +102,9 @@ RETURNING id::text, created_at
 	if err != nil {
 		r.logger.Printf("product repo: upsert key=%s project_id=%s error=%v", product.Key, product.ProjectID, err)
 		return nil, err
+	}
+	if product.ID != "" && res.ID != product.ID {
+		return nil, fmt.Errorf("product repo: id mismatch for key=%s project_id=%s existing_id=%s import_id=%s", product.Key, product.ProjectID, res.ID, product.ID)
 	}
 	res.ProjectID = product.ProjectID
 	res.Key = product.Key
