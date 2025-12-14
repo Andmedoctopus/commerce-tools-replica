@@ -1,0 +1,24 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "db",
+      "Group": "Local",
+      "Host": "db",
+      "Port": 5432,
+      "MaintenanceDB": "commerce",
+      "Username": "commerce",
+      "Password": "commerce",
+      "SSLMode": "prefer"
+    },
+    "2": {
+      "Name": "db-test",
+      "Group": "Local",
+      "Host": "db-test",
+      "Port": 5432,
+      "MaintenanceDB": "commerce_test",
+      "Username": "commerce",
+      "Password": "commerce",
+      "SSLMode": "prefer"
+    }
+  }
+}
