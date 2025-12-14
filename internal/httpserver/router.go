@@ -10,6 +10,7 @@ import (
 	"commercetools-replica/internal/domain"
 	projectrepo "commercetools-replica/internal/repository/project"
 	cartsvc "commercetools-replica/internal/service/cart"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
@@ -43,6 +44,12 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
 	router.Use(gin.Recovery(), requestLogger(logger))
+	router.Use(cors.New(cors.Config{
+		AllowOrigins:     []string{"http://localhost", "http://localhost:*", "http://127.0.0.1", "http://127.0.0.1:*"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"},
+		AllowHeaders:     []string{"Authorization", "Content-Type"},
+		AllowCredentials: true,
+	}))
 
 	router.GET("/healthz", healthHandler)
 	router.GET("/readyz", readyHandler(db))
