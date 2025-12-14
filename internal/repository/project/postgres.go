@@ -3,6 +3,8 @@ package project
 import (
 	"context"
 	"errors"
+	"io"
+	"log"
 
 	"commercetools-replica/internal/domain"
 	"github.com/jackc/pgx/v5"
@@ -10,11 +12,15 @@ import (
 )
 
 type postgresRepo struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	logger *log.Logger
 }
 
-func NewPostgres(pool *pgxpool.Pool) Repository {
-	return &postgresRepo{pool: pool}
+func NewPostgres(pool *pgxpool.Pool, logger *log.Logger) Repository {
+	if logger == nil {
+		logger = log.New(io.Discard, "", 0)
+	}
+	return &postgresRepo{pool: pool, logger: logger}
 }
 
 func (r *postgresRepo) GetByKey(ctx context.Context, key string) (*domain.Project, error) {
@@ -27,10 +33,13 @@ WHERE key = $1
 	err := r.pool.QueryRow(ctx, q, key).Scan(&p.ID, &p.Key, &p.Name, &p.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			r.logger.Printf("project repo: key=%s not found", key)
 			return nil, domain.ErrNotFound
 		}
+		r.logger.Printf("project repo: get key=%s error=%v", key, err)
 		return nil, err
 	}
+	r.logger.Printf("project repo: key=%s id=%s name=%s", p.Key, p.ID, p.Name)
 	return &p, nil
 }
 
@@ -43,9 +52,11 @@ RETURNING id::text, created_at
 	var out domain.Project
 	err := r.pool.QueryRow(ctx, q, project.Key, project.Name).Scan(&out.ID, &out.CreatedAt)
 	if err != nil {
+		r.logger.Printf("project repo: create key=%s error=%v", project.Key, err)
 		return nil, err
 	}
 	out.Key = project.Key
 	out.Name = project.Name
+	r.logger.Printf("project repo: created key=%s id=%s", out.Key, out.ID)
 	return &out, nil
 }

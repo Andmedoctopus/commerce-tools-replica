@@ -34,13 +34,15 @@ func main() {
 	cfg := config.FromEnv()
 	ctx := context.Background()
 
+	logger := log.New(os.Stdout, "[importer] ", log.LstdFlags|log.LUTC|log.Lshortfile)
+
 	pool, err := db.Connect(ctx, cfg.DBConnString)
 	if err != nil {
 		log.Fatalf("connect db: %v", err)
 	}
 	defer pool.Close()
 
-	projRepo := project.NewPostgres(pool)
+	projRepo := project.NewPostgres(pool, logger)
 	proj, err := projRepo.GetByKey(ctx, projectKey)
 	if err != nil {
 		if errors.Is(err, domain.ErrNotFound) {
@@ -57,7 +59,7 @@ func main() {
 	}
 	defer f.Close()
 
-	imp := importer.NewCSVImporter(f, product.NewPostgres(pool), proj.ID)
+	imp := importer.NewCSVImporter(f, product.NewPostgres(pool, logger), proj.ID)
 
 	start := time.Now()
 	count, err := imp.Run(ctx)

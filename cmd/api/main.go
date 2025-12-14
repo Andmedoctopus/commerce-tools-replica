@@ -30,8 +30,8 @@ func main() {
 	}
 	defer dbpool.Close()
 
-	projectRepo := projectrepo.NewPostgres(dbpool)
-	productRepo := productrepo.NewPostgres(dbpool)
+	projectRepo := projectrepo.NewPostgres(dbpool, logger)
+	productRepo := productrepo.NewPostgres(dbpool, logger)
 	productService := productsvc.New(productRepo)
 	cartRepo := cartrepo.NewPostgres(dbpool)
 	cartService := cartsvc.New(cartRepo)

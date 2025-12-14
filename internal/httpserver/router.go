@@ -5,6 +5,7 @@ import (
 	"errors"
 	"log"
 	"net/http"
+	"time"
 
 	"commercetools-replica/internal/domain"
 	projectrepo "commercetools-replica/internal/repository/project"
@@ -41,17 +42,18 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 	}
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
-	router.Use(gin.LoggerWithWriter(logger.Writer()), gin.Recovery())
+	router.Use(gin.Recovery(), requestLogger(logger))
 
 	router.GET("/healthz", healthHandler)
 	router.GET("/readyz", readyHandler(db))
 
-	projectGroup := router.Group("/projects/:projectKey", projectMiddleware(deps.ProjectRepo))
+	projectGroup := router.Group("/projects/:projectKey", projectMiddleware(logger, deps.ProjectRepo))
 	{
 		projectGroup.GET("/products", func(c *gin.Context) {
 			project := mustProject(c)
 			products, err := deps.ProductSvc.List(c.Request.Context(), project.ID)
 			if err != nil {
+				logger.Printf("products list error project_id=%s error=%v", project.ID, err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "list products failed"})
 				return
 			}
@@ -63,9 +65,11 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 			p, err := deps.ProductSvc.Get(c.Request.Context(), project.ID, id)
 			if err != nil {
 				if err == domain.ErrNotFound {
+					logger.Printf("product get not found project_id=%s id=%s", project.ID, id)
 					c.JSON(http.StatusNotFound, gin.H{"error": "product not found"})
 					return
 				}
+				logger.Printf("product get error project_id=%s id=%s error=%v", project.ID, id, err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "get product failed"})
 				return
 			}
@@ -91,9 +95,11 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 			cart, err := deps.CartSvc.Get(c.Request.Context(), project.ID, id)
 			if err != nil {
 				if err == domain.ErrNotFound {
+					logger.Printf("cart get not found project_id=%s id=%s", project.ID, id)
 					c.JSON(http.StatusNotFound, gin.H{"error": "cart not found"})
 					return
 				}
+				logger.Printf("cart get error project_id=%s id=%s error=%v", project.ID, id, err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "get cart failed"})
 				return
 			}
@@ -108,7 +114,7 @@ type ctxKey string
 
 const projectCtxKey ctxKey = "project"
 
-func projectMiddleware(repo projectrepo.Repository) gin.HandlerFunc {
+func projectMiddleware(logger *log.Logger, repo projectrepo.Repository) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		key := c.Param("projectKey")
 		if key == "" {
@@ -119,18 +125,49 @@ func projectMiddleware(repo projectrepo.Repository) gin.HandlerFunc {
 		project, err := repo.GetByKey(c.Request.Context(), key)
 		if err != nil {
 			if err == domain.ErrNotFound {
+				logger.Printf("project middleware: key=%s not found", key)
 				c.JSON(http.StatusNotFound, gin.H{"error": "project not found"})
 				c.Abort()
 				return
 			}
+			logger.Printf("project middleware: key=%s lookup error=%v", key, err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "project lookup failed"})
 			c.Abort()
 			return
 		}
+		logger.Printf("project middleware: key=%s id=%s", project.Key, project.ID)
 		ctx := context.WithValue(c.Request.Context(), projectCtxKey, project)
 		c.Request = c.Request.WithContext(ctx)
 		c.Set(string(projectCtxKey), project)
 		c.Next()
+	}
+}
+
+func requestLogger(logger *log.Logger) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		start := time.Now()
+		c.Next()
+		duration := time.Since(start)
+
+		proj := currentProject(c)
+		pid := ""
+		pkey := ""
+		if proj != nil {
+			pid = proj.ID
+			pkey = proj.Key
+		}
+		if pkey == "" {
+			pkey = c.Param("projectKey")
+		}
+
+		logger.Printf("http %s %s status=%d dur=%s project_key=%s project_id=%s",
+			c.Request.Method,
+			c.Request.URL.Path,
+			c.Writer.Status(),
+			duration.Truncate(time.Millisecond),
+			pkey,
+			pid,
+		)
 	}
 }
 

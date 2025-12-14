@@ -23,13 +23,17 @@ func (s *stubProjectRepo) GetByKey(_ context.Context, _ string) (*domain.Project
 	return s.project, s.err
 }
 
+func (s *stubProjectRepo) Create(_ context.Context, p *domain.Project) (*domain.Project, error) {
+	return p, nil
+}
+
 func TestProjectMiddleware_Success(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &stubProjectRepo{
 		project: &domain.Project{ID: "123", Key: "proj", Name: "Test"},
 	}
 	router := gin.New()
-	router.Use(projectMiddleware(repo))
+	router.Use(projectMiddleware(logDiscard(), repo))
 	router.GET("/projects/:projectKey/test", func(c *gin.Context) {
 		pCtx := c.Request.Context().Value(projectCtxKey)
 		if pCtx == nil {
@@ -59,7 +63,7 @@ func TestProjectMiddleware_NotFound(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &stubProjectRepo{err: domain.ErrNotFound}
 	router := gin.New()
-	router.Use(projectMiddleware(repo))
+	router.Use(projectMiddleware(logDiscard(), repo))
 	router.GET("/projects/:projectKey/test", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
@@ -78,7 +82,7 @@ func TestProjectMiddleware_Error(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &stubProjectRepo{err: errors.New("boom")}
 	router := gin.New()
-	router.Use(projectMiddleware(repo))
+	router.Use(projectMiddleware(logDiscard(), repo))
 	router.GET("/projects/:projectKey/test", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})
@@ -97,7 +101,7 @@ func TestProjectMiddleware_MissingKey(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	repo := &stubProjectRepo{}
 	router := gin.New()
-	router.Use(projectMiddleware(repo))
+	router.Use(projectMiddleware(logDiscard(), repo))
 	router.GET("/projects/:projectKey/test", func(c *gin.Context) {
 		c.Status(http.StatusOK)
 	})

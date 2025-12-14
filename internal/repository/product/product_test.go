@@ -36,7 +36,7 @@ func TestPostgres_ListAndGet(t *testing.T) {
 		t.Fatalf("insert product: %v", err)
 	}
 
-	repo := NewPostgres(pool)
+	repo := NewPostgres(pool, nil)
 
 	list, err := repo.ListByProject(ctx, projectID)
 	if err != nil {
@@ -71,7 +71,7 @@ func TestPostgres_Upsert(t *testing.T) {
 		t.Fatalf("insert project: %v", err)
 	}
 
-	repo := NewPostgres(pool)
+	repo := NewPostgres(pool, nil)
 
 	p, err := repo.Upsert(ctx, domain.Product{
 		ProjectID:  projectID,
@@ -89,14 +89,14 @@ func TestPostgres_Upsert(t *testing.T) {
 	}
 
 	updated, err := repo.Upsert(ctx, domain.Product{
-		ProjectID:  projectID,
-		Key:        "p1",
-		SKU:        "SKU-NEW",
-		Name:       "Prod 1 updated",
+		ProjectID:   projectID,
+		Key:         "p1",
+		SKU:         "SKU-NEW",
+		Name:        "Prod 1 updated",
 		Description: "new desc",
-		PriceCents: 200,
-		Currency:   "USD",
-		Attributes: map[string]interface{}{"images": []string{"https://example.com/1.jpg"}},
+		PriceCents:  200,
+		Currency:    "USD",
+		Attributes:  map[string]interface{}{"images": []string{"https://example.com/1.jpg"}},
 	})
 	if err != nil {
 		t.Fatalf("Upsert update: %v", err)

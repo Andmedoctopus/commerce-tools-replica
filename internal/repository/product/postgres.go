@@ -3,6 +3,8 @@ package product
 import (
 	"context"
 	"errors"
+	"io"
+	"log"
 
 	"commercetools-replica/internal/domain"
 	"github.com/jackc/pgx/v5"
@@ -10,11 +12,15 @@ import (
 )
 
 type postgresRepo struct {
-	pool *pgxpool.Pool
+	pool   *pgxpool.Pool
+	logger *log.Logger
 }
 
-func NewPostgres(pool *pgxpool.Pool) Repository {
-	return &postgresRepo{pool: pool}
+func NewPostgres(pool *pgxpool.Pool, logger *log.Logger) Repository {
+	if logger == nil {
+		logger = log.New(io.Discard, "", 0)
+	}
+	return &postgresRepo{pool: pool, logger: logger}
 }
 
 func (r *postgresRepo) ListByProject(ctx context.Context, projectID string) ([]domain.Product, error) {
@@ -26,6 +32,7 @@ ORDER BY created_at DESC
 `
 	rows, err := r.pool.Query(ctx, q, projectID)
 	if err != nil {
+		r.logger.Printf("product repo: list project_id=%s error=%v", projectID, err)
 		return nil, err
 	}
 	defer rows.Close()
@@ -39,8 +46,10 @@ ORDER BY created_at DESC
 		result = append(result, p)
 	}
 	if err := rows.Err(); err != nil {
+		r.logger.Printf("product repo: list rows project_id=%s error=%v", projectID, err)
 		return nil, err
 	}
+	r.logger.Printf("product repo: list project_id=%s count=%d", projectID, len(result))
 	return result, nil
 }
 
@@ -54,10 +63,13 @@ WHERE project_id = $1 AND id = $2
 	err := r.pool.QueryRow(ctx, q, projectID, id).Scan(&p.ID, &p.ProjectID, &p.Key, &p.SKU, &p.Name, &p.Description, &p.PriceCents, &p.Currency, &p.Attributes, &p.CreatedAt)
 	if err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {
+			r.logger.Printf("product repo: get project_id=%s id=%s not found", projectID, id)
 			return nil, domain.ErrNotFound
 		}
+		r.logger.Printf("product repo: get project_id=%s id=%s error=%v", projectID, id, err)
 		return nil, err
 	}
+	r.logger.Printf("product repo: get project_id=%s id=%s key=%s", projectID, id, p.Key)
 	return &p, nil
 }
 
@@ -86,6 +98,7 @@ RETURNING id::text, created_at
 		product.Attributes,
 	).Scan(&res.ID, &res.CreatedAt)
 	if err != nil {
+		r.logger.Printf("product repo: upsert key=%s project_id=%s error=%v", product.Key, product.ProjectID, err)
 		return nil, err
 	}
 	res.ProjectID = product.ProjectID
@@ -96,5 +109,6 @@ RETURNING id::text, created_at
 	res.PriceCents = product.PriceCents
 	res.Currency = product.Currency
 	res.Attributes = product.Attributes
+	r.logger.Printf("product repo: upserted key=%s project_id=%s id=%s", res.Key, res.ProjectID, res.ID)
 	return &res, nil
 }
