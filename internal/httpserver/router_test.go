@@ -159,7 +159,7 @@ func TestProductsHandler_List(t *testing.T) {
 		t.Fatalf("build router: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/projects/proj-key/products", nil)
+	req := httptest.NewRequest(http.MethodGet, "/proj-key/products", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -189,7 +189,7 @@ func TestProductsHandler_Get_NotFound(t *testing.T) {
 		t.Fatalf("build router: %v", err)
 	}
 
-	req := httptest.NewRequest(http.MethodGet, "/projects/proj-key/products/abc", nil)
+	req := httptest.NewRequest(http.MethodGet, "/proj-key/products/abc", nil)
 	rec := httptest.NewRecorder()
 
 	router.ServeHTTP(rec, req)
@@ -198,6 +198,8 @@ func TestProductsHandler_Get_NotFound(t *testing.T) {
 		t.Fatalf("expected status 404, got %d", rec.Code)
 	}
 }
+
+// CT-style prefix is the default path shape; covered by the list test above.
 
 func logDiscard() *log.Logger {
 	return log.New(io.Discard, "", 0)

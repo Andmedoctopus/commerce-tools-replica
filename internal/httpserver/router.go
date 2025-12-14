@@ -47,9 +47,8 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 	router.GET("/healthz", healthHandler)
 	router.GET("/readyz", readyHandler(db))
 
-	projectGroup := router.Group("/projects/:projectKey", projectMiddleware(logger, deps.ProjectRepo))
-	{
-		projectGroup.GET("/products", func(c *gin.Context) {
+	registerProjectRoutes := func(group *gin.RouterGroup) {
+		group.GET("/products", func(c *gin.Context) {
 			project := mustProject(c)
 			products, err := deps.ProductSvc.List(c.Request.Context(), project.ID)
 			if err != nil {
@@ -59,7 +58,7 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 			}
 			c.JSON(http.StatusOK, products)
 		})
-		projectGroup.GET("/products/:id", func(c *gin.Context) {
+		group.GET("/products/:id", func(c *gin.Context) {
 			project := mustProject(c)
 			id := c.Param("id")
 			p, err := deps.ProductSvc.Get(c.Request.Context(), project.ID, id)
@@ -75,7 +74,7 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 			}
 			c.JSON(http.StatusOK, p)
 		})
-		projectGroup.POST("/carts", func(c *gin.Context) {
+		group.POST("/carts", func(c *gin.Context) {
 			project := mustProject(c)
 			var req cartsvc.CreateInput
 			if err := c.ShouldBindJSON(&req); err != nil {
@@ -89,7 +88,7 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 			}
 			c.JSON(http.StatusCreated, cart)
 		})
-		projectGroup.GET("/carts/:id", func(c *gin.Context) {
+		group.GET("/carts/:id", func(c *gin.Context) {
 			project := mustProject(c)
 			id := c.Param("id")
 			cart, err := deps.CartSvc.Get(c.Request.Context(), project.ID, id)
@@ -106,6 +105,10 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 			c.JSON(http.StatusOK, cart)
 		})
 	}
+
+	// commercetools-style prefix: /{projectKey}/...
+	ctStyle := router.Group("/:projectKey", projectMiddleware(logger, deps.ProjectRepo))
+	registerProjectRoutes(ctStyle)
 
 	return router, nil
 }
