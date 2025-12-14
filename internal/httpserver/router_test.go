@@ -7,6 +7,7 @@ import (
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"commercetools-replica/internal/domain"
@@ -146,7 +147,7 @@ func TestProductsHandler_List(t *testing.T) {
 	projectRepo := &stubProjectRepo{project: proj}
 	productSvc := &stubProductService{
 		listResult: []domain.Product{
-			{ID: "p1", ProjectID: proj.ID, Name: "Demo"},
+			{ID: "p1", ProjectID: proj.ID, Name: "Demo", Key: "demo", SKU: "SKU1", PriceCents: 100, Currency: "EUR"},
 		},
 	}
 	cartSvc := &stubCartService{}
@@ -167,8 +168,8 @@ func TestProductsHandler_List(t *testing.T) {
 	if rec.Code != http.StatusOK {
 		t.Fatalf("expected status 200, got %d", rec.Code)
 	}
-	if body := rec.Body.String(); body == "" || body == "null" {
-		t.Fatalf("expected response body, got %q", body)
+	if body := rec.Body.String(); !strings.Contains(body, `"masterData"`) {
+		t.Fatalf("expected commercetools shape, got %q", body)
 	}
 }
 

@@ -56,7 +56,11 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "list products failed"})
 				return
 			}
-			c.JSON(http.StatusOK, products)
+			var resp []ctProduct
+			for _, p := range products {
+				resp = append(resp, toCTProduct(p))
+			}
+			c.JSON(http.StatusOK, resp)
 		})
 		group.GET("/products/:id", func(c *gin.Context) {
 			project := mustProject(c)
@@ -72,7 +76,7 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "get product failed"})
 				return
 			}
-			c.JSON(http.StatusOK, p)
+			c.JSON(http.StatusOK, toCTProduct(*p))
 		})
 		group.POST("/carts", func(c *gin.Context) {
 			project := mustProject(c)
