@@ -202,6 +202,82 @@ func TestProductsHandler_Get_NotFound(t *testing.T) {
 
 // CT-style prefix is the default path shape; covered by the list test above.
 
+func TestProductsHandler_Search(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	proj := &domain.Project{ID: "proj-id", Key: "proj-key"}
+	projectRepo := &stubProjectRepo{project: proj}
+	productSvc := &stubProductService{
+		listResult: []domain.Product{
+			{ID: "b-id", ProjectID: proj.ID, Name: "Beta", Key: "b", SKU: "SKU2", PriceCents: 100, Currency: "EUR"},
+			{ID: "a-id", ProjectID: proj.ID, Name: "Alpha", Key: "a", SKU: "SKU1", PriceCents: 200, Currency: "EUR"},
+		},
+	}
+	cartSvc := &stubCartService{}
+	router, err := buildRouter(logDiscard(), nil, Deps{
+		ProjectRepo: projectRepo,
+		ProductSvc:  productSvc,
+		CartSvc:     cartSvc,
+	})
+	if err != nil {
+		t.Fatalf("build router: %v", err)
+	}
+
+	body := `{"limit":1,"offset":0,"query":{"filter":[{"range":{"field":"variants.prices.centAmount","fieldType":"long","gte":0,"lte":150}}]}}`
+	req := httptest.NewRequest(http.MethodPost, "/proj-key/products/search", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"total":1`) || !strings.Contains(rec.Body.String(), `"id":"b-id"`) {
+		t.Fatalf("unexpected search response: %s", rec.Body.String())
+	}
+}
+
+func TestProductsHandler_SearchSortByPriceDesc(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	proj := &domain.Project{ID: "proj-id", Key: "proj-key"}
+	projectRepo := &stubProjectRepo{project: proj}
+	productSvc := &stubProductService{
+		listResult: []domain.Product{
+			{ID: "cheap", ProjectID: proj.ID, Name: "Cheap", Key: "c", SKU: "SKU1", PriceCents: 100, Currency: "EUR"},
+			{ID: "exp", ProjectID: proj.ID, Name: "Expensive", Key: "e", SKU: "SKU2", PriceCents: 500, Currency: "EUR"},
+		},
+	}
+	cartSvc := &stubCartService{}
+	router, err := buildRouter(logDiscard(), nil, Deps{
+		ProjectRepo: projectRepo,
+		ProductSvc:  productSvc,
+		CartSvc:     cartSvc,
+	})
+	if err != nil {
+		t.Fatalf("build router: %v", err)
+	}
+
+	body := `{"limit":2,"offset":0,"sort":[{"field":"variants.prices.centAmount","order":"desc"}]}`
+	req := httptest.NewRequest(http.MethodPost, "/proj-key/products/search", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected status 200, got %d", rec.Code)
+	}
+	bodyStr := rec.Body.String()
+	firstIdx := strings.Index(bodyStr, `"id":"`)
+	secondIdx := strings.Index(bodyStr[firstIdx+1:], `"id":"`)
+	if firstIdx == -1 || secondIdx == -1 {
+		t.Fatalf("unexpected search response: %s", bodyStr)
+	}
+	if !strings.Contains(bodyStr, `"id":"exp"`) || firstIdx > strings.Index(bodyStr, `"id":"exp"`) {
+		t.Fatalf("expected expensive first in desc price sort, got %s", bodyStr)
+	}
+}
+
 func logDiscard() *log.Logger {
 	return log.New(io.Discard, "", 0)
 }

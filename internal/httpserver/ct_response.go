@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"sort"
 	"strings"
 	"time"
 
@@ -92,6 +93,44 @@ type ctRef struct {
 	Key    string `json:"key,omitempty"`
 }
 
+type searchRequest struct {
+	Query struct {
+		Filter []filterClause `json:"filter"`
+	} `json:"query"`
+	Sort   []sortClause `json:"sort"`
+	Limit  int          `json:"limit"`
+	Offset int          `json:"offset"`
+}
+
+type filterClause struct {
+	Range *rangeFilter `json:"range"`
+}
+
+type rangeFilter struct {
+	Field     string `json:"field"`
+	FieldType string `json:"fieldType"`
+	GTE       *int64 `json:"gte"`
+	LTE       *int64 `json:"lte"`
+}
+
+type sortClause struct {
+	Field    string `json:"field"`
+	Language string `json:"language"`
+	Order    string `json:"order"`
+}
+
+type searchResponse struct {
+	Total   int                `json:"total"`
+	Offset  int                `json:"offset"`
+	Limit   int                `json:"limit"`
+	Facets  []interface{}      `json:"facets"`
+	Results []searchResultItem `json:"results"`
+}
+
+type searchResultItem struct {
+	ID string `json:"id"`
+}
+
 func toCTProduct(p domain.Product) ctProduct {
 	name := map[string]string{"en": p.Name}
 	desc := map[string]string{}
@@ -178,4 +217,106 @@ func extractImages(attrs map[string]interface{}) []ctImage {
 		images = append(images, ctImage{URL: u})
 	}
 	return images
+}
+
+func buildSearchResponse(products []domain.Product, req searchRequest) searchResponse {
+	products = filterProducts(products, req)
+	sortProducts(products, req)
+	offset := req.Offset
+	if offset < 0 {
+		offset = 0
+	}
+	limit := req.Limit
+	if limit <= 0 {
+		limit = len(products)
+	}
+
+	end := offset + limit
+	if end > len(products) {
+		end = len(products)
+	}
+	sliced := []domain.Product{}
+	if offset < len(products) {
+		sliced = products[offset:end]
+	}
+
+	results := make([]searchResultItem, 0, len(sliced))
+	for _, p := range sliced {
+		results = append(results, searchResultItem{ID: p.ID})
+	}
+
+	return searchResponse{
+		Total:   len(products),
+		Offset:  offset,
+		Limit:   limit,
+		Facets:  []interface{}{},
+		Results: results,
+	}
+}
+
+func filterProducts(products []domain.Product, req searchRequest) []domain.Product {
+	var prange *rangeFilter
+	for _, f := range req.Query.Filter {
+		if f.Range != nil && f.Range.Field == "variants.prices.centAmount" {
+			prange = f.Range
+			break
+		}
+	}
+	if prange == nil || (prange.GTE == nil && prange.LTE == nil) {
+		return products
+	}
+
+	var filtered []domain.Product
+	for _, p := range products {
+		if prange.GTE != nil && p.PriceCents < *prange.GTE {
+			continue
+		}
+		if prange.LTE != nil && p.PriceCents > *prange.LTE {
+			continue
+		}
+		filtered = append(filtered, p)
+	}
+	return filtered
+}
+
+func sortProducts(products []domain.Product, req searchRequest) {
+	if len(req.Sort) == 0 {
+		sort.Slice(products, func(i, j int) bool {
+			return strings.ToLower(products[i].Name) < strings.ToLower(products[j].Name)
+		})
+		return
+	}
+
+	// Support name asc/desc and price asc/desc
+	field := strings.ToLower(req.Sort[0].Field)
+	order := strings.ToLower(req.Sort[0].Order)
+	if order == "" {
+		order = "asc"
+	}
+
+	less := func(i, j int) bool { return true }
+	switch field {
+	case "name":
+		less = func(i, j int) bool {
+			li := strings.ToLower(products[i].Name)
+			lj := strings.ToLower(products[j].Name)
+			if order == "desc" {
+				return li > lj
+			}
+			return li < lj
+		}
+	case "variants.prices.centamount", "price", "variants.prices.value.centamount":
+		less = func(i, j int) bool {
+			if order == "desc" {
+				return products[i].PriceCents > products[j].PriceCents
+			}
+			return products[i].PriceCents < products[j].PriceCents
+		}
+	default:
+		less = func(i, j int) bool {
+			return strings.ToLower(products[i].Name) < strings.ToLower(products[j].Name)
+		}
+	}
+
+	sort.Slice(products, less)
 }

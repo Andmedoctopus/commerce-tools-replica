@@ -92,6 +92,27 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 			}
 			c.JSON(http.StatusOK, toCTProduct(*p))
 		})
+		group.POST("/products/search", func(c *gin.Context) {
+			project := mustProject(c)
+
+			var req searchRequest
+			if c.Request.Body != nil && c.Request.ContentLength != 0 {
+				if err := c.ShouldBindJSON(&req); err != nil {
+					c.JSON(http.StatusBadRequest, gin.H{"error": "invalid search request"})
+					return
+				}
+			}
+
+			products, err := deps.ProductSvc.List(c.Request.Context(), project.ID)
+			if err != nil {
+				logger.Printf("products search error project_id=%s error=%v", project.ID, err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "search failed"})
+				return
+			}
+
+			resp := buildSearchResponse(products, req)
+			c.JSON(http.StatusOK, resp)
+		})
 		group.POST("/carts", func(c *gin.Context) {
 			project := mustProject(c)
 			var req cartsvc.CreateInput
