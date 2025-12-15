@@ -1,0 +1,1 @@
+{"query":{"filter":[{"range":{"field":"variants.prices.centAmount","fieldType":"long","gte":0,"lte":30000}}]},"sort":[{"field":"name","language":"en","order":"asc"}],"limit":12,"offset":0}
