@@ -104,6 +104,7 @@ type searchRequest struct {
 
 type filterClause struct {
 	Range *rangeFilter `json:"range"`
+	Exact *exactFilter `json:"exact"`
 }
 
 type rangeFilter struct {
@@ -113,6 +114,10 @@ type rangeFilter struct {
 	LTE       *int64 `json:"lte"`
 }
 
+type exactFilter struct {
+	Field string `json:"field"`
+	Value string `json:"value"`
+}
 type sortClause struct {
 	Field    string `json:"field"`
 	Language string `json:"language"`
@@ -256,23 +261,30 @@ func buildSearchResponse(products []domain.Product, req searchRequest) searchRes
 
 func filterProducts(products []domain.Product, req searchRequest) []domain.Product {
 	var prange *rangeFilter
+	var category string
 	for _, f := range req.Query.Filter {
 		if f.Range != nil && f.Range.Field == "variants.prices.centAmount" {
 			prange = f.Range
-			break
 		}
-	}
-	if prange == nil || (prange.GTE == nil && prange.LTE == nil) {
-		return products
+		if f.Exact != nil && f.Exact.Field == "categories" {
+			category = f.Exact.Value
+		}
 	}
 
 	var filtered []domain.Product
 	for _, p := range products {
-		if prange.GTE != nil && p.PriceCents < *prange.GTE {
-			continue
+		if prange != nil {
+			if prange.GTE != nil && p.PriceCents < *prange.GTE {
+				continue
+			}
+			if prange.LTE != nil && p.PriceCents > *prange.LTE {
+				continue
+			}
 		}
-		if prange.LTE != nil && p.PriceCents > *prange.LTE {
-			continue
+		if category != "" {
+			if !containsCategory(p, category) {
+				continue
+			}
 		}
 		filtered = append(filtered, p)
 	}
@@ -319,4 +331,28 @@ func sortProducts(products []domain.Product, req searchRequest) {
 	}
 
 	sort.Slice(products, less)
+}
+
+func containsCategory(p domain.Product, categoryID string) bool {
+	raw, ok := p.Attributes["categories"]
+	if !ok {
+		return false
+	}
+	switch v := raw.(type) {
+	case []interface{}:
+		for _, c := range v {
+			if s, ok := c.(string); ok && s == categoryID {
+				return true
+			}
+		}
+	case []string:
+		for _, s := range v {
+			if s == categoryID {
+				return true
+			}
+		}
+	case string:
+		return v == categoryID
+	}
+	return false
 }
