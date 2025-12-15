@@ -2,6 +2,7 @@ package httpserver
 
 import (
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -134,6 +135,73 @@ type searchResponse struct {
 
 type searchResultItem struct {
 	ID string `json:"id"`
+}
+
+type ctCategory struct {
+	ID                  string            `json:"id"`
+	Key                 string            `json:"key,omitempty"`
+	Version             int               `json:"version"`
+	CreatedAt           time.Time         `json:"createdAt"`
+	LastModifiedAt      time.Time         `json:"lastModifiedAt"`
+	Name                map[string]string `json:"name"`
+	Slug                map[string]string `json:"slug"`
+	Ancestors           []interface{}     `json:"ancestors"`
+	Parent              interface{}       `json:"parent"`
+	OrderHint           string            `json:"orderHint,omitempty"`
+	MetaTitle           map[string]string `json:"metaTitle,omitempty"`
+	MetaDescription     map[string]string `json:"metaDescription,omitempty"`
+	LastMessageSequence int               `json:"lastMessageSequenceNumber,omitempty"`
+}
+
+type ctCategoryList struct {
+	Limit   int          `json:"limit"`
+	Offset  int          `json:"offset"`
+	Count   int          `json:"count"`
+	Total   int          `json:"total"`
+	Results []ctCategory `json:"results"`
+}
+
+func buildCategoryList(cats []domain.Category, limit, offset int) ctCategoryList {
+	if limit <= 0 {
+		limit = len(cats)
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	end := offset + limit
+	if end > len(cats) {
+		end = len(cats)
+	}
+	sliced := []domain.Category{}
+	if offset < len(cats) {
+		sliced = cats[offset:end]
+	}
+	out := ctCategoryList{
+		Limit:  limit,
+		Offset: offset,
+		Total:  len(cats),
+		Count:  len(sliced),
+	}
+	for _, c := range sliced {
+		out.Results = append(out.Results, toCTCategory(c))
+	}
+	return out
+}
+
+func parseLimitOffset(qLimit, qOffset string) (int, int) {
+	limit := 0
+	offset := 0
+	if qLimit != "" {
+		if v, err := strconv.Atoi(qLimit); err == nil && v >= 0 {
+			limit = v
+		}
+	}
+	if qOffset != "" {
+		if v, err := strconv.Atoi(qOffset); err == nil && v >= 0 {
+			offset = v
+		}
+	}
+	return limit, offset
 }
 
 func toCTProduct(p domain.Product) ctProduct {
@@ -355,4 +423,26 @@ func containsCategory(p domain.Product, categoryID string) bool {
 		return v == categoryID
 	}
 	return false
+}
+
+func toCTCategory(c domain.Category) ctCategory {
+	name := c.Name
+	if name == "" {
+		name = c.Key
+	}
+	nameMap := map[string]string{"en": name}
+	slugMap := map[string]string{"en": c.Slug}
+	return ctCategory{
+		ID:             c.ID,
+		Key:            c.Key,
+		Version:        1,
+		CreatedAt:      c.CreatedAt,
+		LastModifiedAt: c.CreatedAt,
+		Name:           nameMap,
+		Slug:           slugMap,
+		Ancestors:      []interface{}{},
+		Parent:         nil,
+		OrderHint:      "",
+		MetaTitle:      nameMap,
+	}
 }

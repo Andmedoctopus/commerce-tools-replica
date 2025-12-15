@@ -26,10 +26,16 @@ type cartService interface {
 	Get(ctx context.Context, projectID, id string) (*domain.Cart, error)
 }
 
+type categoryService interface {
+	List(ctx context.Context, projectID string) ([]domain.Category, error)
+	Upsert(ctx context.Context, c domain.Category) (*domain.Category, error)
+}
+
 type Deps struct {
 	ProjectRepo projectrepo.Repository
 	ProductSvc  productService
 	CartSvc     cartService
+	CategorySvc categoryService
 }
 
 func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, error) {
@@ -41,6 +47,9 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 	}
 	if deps.CartSvc == nil {
 		return nil, errors.New("CartSvc is required")
+	}
+	if deps.CategorySvc == nil {
+		return nil, errors.New("CategorySvc is required")
 	}
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
@@ -111,6 +120,18 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 			}
 
 			resp := buildSearchResponse(products, req)
+			c.JSON(http.StatusOK, resp)
+		})
+		group.GET("/categories", func(c *gin.Context) {
+			project := mustProject(c)
+			cats, err := deps.CategorySvc.List(c.Request.Context(), project.ID)
+			if err != nil {
+				logger.Printf("categories list error project_id=%s error=%v", project.ID, err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "list categories failed"})
+				return
+			}
+			limit, offset := parseLimitOffset(c.Query("limit"), c.Query("offset"))
+			resp := buildCategoryList(cats, limit, offset)
 			c.JSON(http.StatusOK, resp)
 		})
 		group.POST("/carts", func(c *gin.Context) {

@@ -23,6 +23,10 @@ func Apply(ctx context.Context, pool *pgxpool.Pool) error {
 		return fmt.Errorf("ensure project: %w", err)
 	}
 
+	if err := ensureCategories(ctx, pool, projectID); err != nil {
+		return fmt.Errorf("ensure categories: %w", err)
+	}
+
 	products := []productSeed{
 		{
 			Key:         "demo-shirt",
@@ -48,6 +52,27 @@ func Apply(ctx context.Context, pool *pgxpool.Pool) error {
 		}
 	}
 
+	return nil
+}
+
+func ensureCategories(ctx context.Context, pool *pgxpool.Pool, projectID string) error {
+	cats := []struct {
+		Key  string
+		Name string
+	}{
+		{Key: "cat-1", Name: "Demo Category 1"},
+		{Key: "cat-2", Name: "Demo Category 2"},
+	}
+	for _, c := range cats {
+		const q = `
+INSERT INTO categories (project_id, key, name)
+VALUES ($1, $2, $3)
+ON CONFLICT (project_id, key) DO NOTHING
+`
+		if _, err := pool.Exec(ctx, q, projectID, c.Key, c.Name); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 

@@ -40,6 +40,7 @@ Goal: build a partial, commercetools-compatible web API (projects, products, car
 - Health endpoints: `/healthz` and `/readyz` (Kubernetes-style suffix) reserved for probes, separate from business routes.
 - Dev container: `dev` (Dockerfile `dev` target, repo mounted, bash) for running commands inside the compose network; start `dev`/`api-dev` via compose and use `./devenv` to exec. Required context values (e.g., project/auth) are treated as invariants; handlers may panic when missing so recovery returns 500 and logs the issue instead of leaking internal details to clients.
 - Command output etiquette: avoid noisy commands (e.g., `go mod tidy`) unless required for builds; keep terminal output concise when possible.
+- Do not run `gofmt` or formatters on SQL migration files; edit them directly to avoid unintended changes.
 
 ### Near-Term Tasks
 1) Scaffold Go module, folder layout (`cmd/api`, `internal/{http,service,repo,domain}`), config loading, logger.

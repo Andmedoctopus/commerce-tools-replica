@@ -13,6 +13,8 @@ import (
 	"commercetools-replica/internal/db"
 	"commercetools-replica/internal/domain"
 	"commercetools-replica/internal/importer"
+	"commercetools-replica/internal/migrate"
+	category "commercetools-replica/internal/repository/category"
 	"commercetools-replica/internal/repository/product"
 	"commercetools-replica/internal/repository/project"
 )
@@ -42,6 +44,10 @@ func main() {
 	}
 	defer pool.Close()
 
+	if err := migrate.Apply(ctx, pool); err != nil {
+		log.Fatalf("apply migrations: %v", err)
+	}
+
 	projRepo := project.NewPostgres(pool, logger)
 	proj, err := projRepo.GetByKey(ctx, projectKey)
 	if err != nil {
@@ -59,7 +65,7 @@ func main() {
 	}
 	defer f.Close()
 
-	imp := importer.NewCSVImporter(f, product.NewPostgres(pool, logger), proj.ID)
+	imp := importer.NewCSVImporter(f, product.NewPostgres(pool, logger), category.NewPostgres(pool), proj.ID)
 
 	start := time.Now()
 	count, err := imp.Run(ctx)

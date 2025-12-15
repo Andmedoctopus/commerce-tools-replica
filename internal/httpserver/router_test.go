@@ -141,6 +141,20 @@ func (s *stubCartService) Get(_ context.Context, _ string, _ string) (*domain.Ca
 	return nil, nil
 }
 
+type stubCategoryService struct {
+	list []domain.Category
+	err  error
+}
+
+func (s *stubCategoryService) List(_ context.Context, _ string) ([]domain.Category, error) {
+	return s.list, s.err
+}
+
+func (s *stubCategoryService) Upsert(_ context.Context, c domain.Category) (*domain.Category, error) {
+	s.list = append(s.list, c)
+	return &c, s.err
+}
+
 func TestProductsHandler_List(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	proj := &domain.Project{ID: "proj-id", Key: "proj-key"}
@@ -151,10 +165,12 @@ func TestProductsHandler_List(t *testing.T) {
 		},
 	}
 	cartSvc := &stubCartService{}
+	categorySvc := &stubCategoryService{}
 	router, err := buildRouter(logDiscard(), nil, Deps{
 		ProjectRepo: projectRepo,
 		ProductSvc:  productSvc,
 		CartSvc:     cartSvc,
+		CategorySvc: categorySvc,
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -181,10 +197,12 @@ func TestProductsHandler_Get_NotFound(t *testing.T) {
 		err: domain.ErrNotFound,
 	}
 	cartSvc := &stubCartService{}
+	categorySvc := &stubCategoryService{}
 	router, err := buildRouter(logDiscard(), nil, Deps{
 		ProjectRepo: projectRepo,
 		ProductSvc:  productSvc,
 		CartSvc:     cartSvc,
+		CategorySvc: categorySvc,
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -213,10 +231,14 @@ func TestProductsHandler_Search(t *testing.T) {
 		},
 	}
 	cartSvc := &stubCartService{}
+	categorySvc := &stubCategoryService{
+		list: []domain.Category{{ID: "cat-1", Key: "cat-1", Name: "Cat 1", ProjectID: proj.ID}},
+	}
 	router, err := buildRouter(logDiscard(), nil, Deps{
 		ProjectRepo: projectRepo,
 		ProductSvc:  productSvc,
 		CartSvc:     cartSvc,
+		CategorySvc: categorySvc,
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -248,10 +270,12 @@ func TestProductsHandler_SearchSortByPriceDesc(t *testing.T) {
 		},
 	}
 	cartSvc := &stubCartService{}
+	categorySvc := &stubCategoryService{}
 	router, err := buildRouter(logDiscard(), nil, Deps{
 		ProjectRepo: projectRepo,
 		ProductSvc:  productSvc,
 		CartSvc:     cartSvc,
+		CategorySvc: categorySvc,
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -275,6 +299,41 @@ func TestProductsHandler_SearchSortByPriceDesc(t *testing.T) {
 	}
 	if !strings.Contains(bodyStr, `"id":"exp"`) || firstIdx > strings.Index(bodyStr, `"id":"exp"`) {
 		t.Fatalf("expected expensive first in desc price sort, got %s", bodyStr)
+	}
+}
+
+func TestCategoriesHandler_List(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	proj := &domain.Project{ID: "proj-id", Key: "proj-key"}
+	projectRepo := &stubProjectRepo{project: proj}
+	productSvc := &stubProductService{}
+	cartSvc := &stubCartService{}
+	categorySvc := &stubCategoryService{
+		list: []domain.Category{
+			{ID: "cat-1", Key: "cat-1", Name: "Cat 1", Slug: "cat-1", ProjectID: proj.ID},
+			{ID: "cat-2", Key: "cat-2", Name: "Cat 2", Slug: "cat-2", ProjectID: proj.ID},
+		},
+	}
+
+	router, err := buildRouter(logDiscard(), nil, Deps{
+		ProjectRepo: projectRepo,
+		ProductSvc:  productSvc,
+		CartSvc:     cartSvc,
+		CategorySvc: categorySvc,
+	})
+	if err != nil {
+		t.Fatalf("build router: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/proj-key/categories", nil)
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d", rec.Code)
+	}
+	if !strings.Contains(rec.Body.String(), `"Cat 1"`) || !strings.Contains(rec.Body.String(), `"total":2`) {
+		t.Fatalf("unexpected response: %s", rec.Body.String())
 	}
 }
 

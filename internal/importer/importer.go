@@ -16,32 +16,42 @@ type ProductWriter interface {
 	Upsert(ctx context.Context, product domain.Product) (*domain.Product, error)
 }
 
-// CSVImporter reads commercetools-like CSV exports and inserts/updates products.
-type CSVImporter struct {
-	reader      *csv.Reader
-	productRepo ProductWriter
-	projectID   string
+type CategoryWriter interface {
+	Upsert(ctx context.Context, c domain.Category) (*domain.Category, error)
 }
 
-func NewCSVImporter(r io.Reader, repo ProductWriter, projectID string) *CSVImporter {
+// CSVImporter reads commercetools-like CSV exports and inserts/updates products.
+type CSVImporter struct {
+	reader       *csv.Reader
+	productRepo  ProductWriter
+	categoryRepo CategoryWriter
+	categorySeen map[string]struct{}
+	projectID    string
+}
+
+func NewCSVImporter(r io.Reader, repo ProductWriter, catRepo CategoryWriter, projectID string) *CSVImporter {
 	csvr := csv.NewReader(r)
 	csvr.FieldsPerRecord = -1 // rows may have trailing commas
 	return &CSVImporter{
-		reader:      csvr,
-		productRepo: repo,
-		projectID:   projectID,
+		reader:       csvr,
+		productRepo:  repo,
+		categoryRepo: catRepo,
+		categorySeen: make(map[string]struct{}),
+		projectID:    projectID,
 	}
 }
 
 type csvRow struct {
-	ID        string
-	Key       string
-	Name      string
-	Desc      string
-	SKU       string
-	Cents     int64
-	Currency  string
-	ImageURLs []string
+	ID          string
+	Key         string
+	Name        string
+	Desc        string
+	SKU         string
+	Cents       int64
+	Currency    string
+	ImageURLs   []string
+	Categories  []string
+	ProductType string
 }
 
 // Run parses CSV rows and upserts products grouped by product key.
@@ -110,6 +120,10 @@ func (i *CSVImporter) save(ctx context.Context, row *csvRow) error {
 	if len(row.ImageURLs) > 0 {
 		attrs["images"] = row.ImageURLs
 	}
+	catKeys := pickCategoryKeys(row)
+	if len(catKeys) > 0 {
+		attrs["categories"] = catKeys
+	}
 
 	p := domain.Product{
 		ID:          row.ID,
@@ -126,6 +140,32 @@ func (i *CSVImporter) save(ctx context.Context, row *csvRow) error {
 	_, err := i.productRepo.Upsert(ctx, p)
 	if err != nil {
 		return fmt.Errorf("upsert product %q: %w", row.Key, err)
+	}
+
+	if i.categoryRepo != nil {
+		seen := make(map[string]struct{})
+		for _, cat := range catKeys {
+			cat = strings.TrimSpace(cat)
+			if cat == "" {
+				continue
+			}
+			if _, ok := seen[cat]; ok {
+				continue
+			}
+			seen[cat] = struct{}{}
+			if _, ok := i.categorySeen[cat]; ok {
+				continue
+			}
+			if _, err := i.categoryRepo.Upsert(ctx, domain.Category{
+				ProjectID: i.projectID,
+				Key:       cat,
+				Name:      displayNameFromKey(cat),
+				Slug:      cat,
+			}); err != nil {
+				return fmt.Errorf("upsert category %q: %w", cat, err)
+			}
+			i.categorySeen[cat] = struct{}{}
+		}
 	}
 	return nil
 }
@@ -148,6 +188,9 @@ func parseRow(record []string, index map[string]int) *csvRow {
 	centStr := pick(record, index, "variants.prices.value.centAmount")
 
 	imageURL := pick(record, index, "variants.images.url")
+	categories := pickCategories(record, index, "categories")
+	ptype := pick(record, index, "productType.key")
+	categories = normalizeCategoryKeys(categories, ptype)
 
 	if key == "" && imageURL == "" {
 		return nil
@@ -159,13 +202,15 @@ func parseRow(record []string, index map[string]int) *csvRow {
 	}
 
 	row := &csvRow{
-		Key:      key,
-		Name:     name,
-		Desc:     desc,
-		SKU:      sku,
-		Cents:    cents,
-		Currency: currency,
-		ID:       id,
+		Key:         key,
+		Name:        name,
+		Desc:        desc,
+		SKU:         sku,
+		Cents:       cents,
+		Currency:    currency,
+		ID:          id,
+		Categories:  categories,
+		ProductType: ptype,
 	}
 	if imageURL != "" {
 		row.ImageURLs = []string{strings.TrimSpace(imageURL)}
@@ -179,4 +224,72 @@ func pick(record []string, index map[string]int, key string) string {
 		return ""
 	}
 	return strings.TrimSpace(record[pos])
+}
+
+func pickCategories(record []string, index map[string]int, key string) []string {
+	val := pick(record, index, key)
+	if val == "" {
+		return nil
+	}
+	parts := strings.FieldsFunc(val, func(r rune) bool {
+		return r == ',' || r == ';'
+	})
+	var out []string
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+func normalizeCategoryKeys(cats []string, fallback string) []string {
+	if len(cats) == 0 && fallback != "" {
+		cats = []string{fallback}
+	}
+	seen := make(map[string]struct{})
+	var out []string
+	for _, c := range cats {
+		n := normalizeCategoryKey(c)
+		if n == "" {
+			continue
+		}
+		if _, ok := seen[n]; ok {
+			continue
+		}
+		seen[n] = struct{}{}
+		out = append(out, n)
+	}
+	return out
+}
+
+func normalizeCategoryKey(key string) string {
+	key = strings.TrimSpace(key)
+	key = strings.TrimSuffix(key, "-types")
+	key = strings.TrimSuffix(key, "-type")
+	return key
+}
+
+func displayNameFromKey(key string) string {
+	parts := strings.FieldsFunc(key, func(r rune) bool {
+		return r == '-' || r == '_' || r == ' '
+	})
+	for i, p := range parts {
+		if len(p) == 0 {
+			continue
+		}
+		parts[i] = strings.ToUpper(p[:1]) + strings.ToLower(p[1:])
+	}
+	return strings.Join(parts, " ")
+}
+
+func pickCategoryKeys(row *csvRow) []string {
+	if len(row.Categories) > 0 {
+		return row.Categories
+	}
+	if row.ProductType != "" {
+		return []string{row.ProductType}
+	}
+	return nil
 }
