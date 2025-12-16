@@ -1,0 +1,4 @@
+ALTER TABLE categories
+    ADD COLUMN IF NOT EXISTS slug TEXT,
+    ADD COLUMN IF NOT EXISTS order_hint TEXT,
+    ADD COLUMN IF NOT EXISTS parent_key TEXT;

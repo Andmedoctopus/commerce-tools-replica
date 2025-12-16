@@ -145,11 +145,12 @@ type ctCategory struct {
 	LastModifiedAt      time.Time         `json:"lastModifiedAt"`
 	Name                map[string]string `json:"name"`
 	Slug                map[string]string `json:"slug"`
-	Ancestors           []interface{}     `json:"ancestors"`
-	Parent              interface{}       `json:"parent"`
+	Ancestors           []ctRef           `json:"ancestors"`
+	Parent              *ctRef            `json:"parent"`
 	OrderHint           string            `json:"orderHint,omitempty"`
 	MetaTitle           map[string]string `json:"metaTitle,omitempty"`
 	MetaDescription     map[string]string `json:"metaDescription,omitempty"`
+	Description         map[string]string `json:"description,omitempty"`
 	LastMessageSequence int               `json:"lastMessageSequenceNumber,omitempty"`
 }
 
@@ -162,6 +163,12 @@ type ctCategoryList struct {
 }
 
 func buildCategoryList(cats []domain.Category, limit, offset int) ctCategoryList {
+	keyToCat := make(map[string]domain.Category, len(cats))
+	keyToID := make(map[string]string, len(cats))
+	for _, c := range cats {
+		keyToCat[c.Key] = c
+		keyToID[c.Key] = c.ID
+	}
 	if limit <= 0 {
 		limit = len(cats)
 	}
@@ -183,7 +190,9 @@ func buildCategoryList(cats []domain.Category, limit, offset int) ctCategoryList
 		Count:  len(sliced),
 	}
 	for _, c := range sliced {
-		out.Results = append(out.Results, toCTCategory(c))
+		parentID := keyToID[c.ParentKey]
+		ancestors := buildAncestors(c, keyToCat, keyToID)
+		out.Results = append(out.Results, toCTCategory(c, parentID, ancestors))
 	}
 	return out
 }
@@ -202,6 +211,67 @@ func parseLimitOffset(qLimit, qOffset string) (int, int) {
 		}
 	}
 	return limit, offset
+}
+
+func buildAncestors(c domain.Category, keyToCat map[string]domain.Category, keyToID map[string]string) []ctRef {
+	var ancestors []ctRef
+	seen := make(map[string]struct{})
+	current := c.ParentKey
+	for current != "" {
+		if _, ok := seen[current]; ok {
+			break
+		}
+		seen[current] = struct{}{}
+		id := keyToID[current]
+		if id == "" {
+			break
+		}
+		ancestors = append([]ctRef{{TypeID: "category", ID: id}}, ancestors...)
+		next := keyToCat[current].ParentKey
+		current = next
+	}
+	return ancestors
+}
+
+func toCTCategory(c domain.Category, parentID string, ancestors []ctRef) ctCategory {
+	name := c.Name
+	if name == "" {
+		name = c.Key
+	}
+	nameMap := map[string]string{"en": name}
+	slugVal := c.Slug
+	if slugVal == "" {
+		slugVal = c.Key
+	}
+	slugMap := map[string]string{"en": slugVal}
+	var parentRef *ctRef
+	if parentID != "" {
+		parentRef = &ctRef{TypeID: "category", ID: parentID}
+	}
+	metaTitle := nameMap
+	metaDesc := map[string]string{}
+	if c.MetaDescription != "" {
+		metaDesc["en"] = c.MetaDescription
+	}
+	descMap := map[string]string{}
+	if c.Description != "" {
+		descMap["en"] = c.Description
+	}
+	return ctCategory{
+		ID:              c.ID,
+		Key:             c.Key,
+		Version:         1,
+		CreatedAt:       c.CreatedAt,
+		LastModifiedAt:  c.CreatedAt,
+		Name:            nameMap,
+		Slug:            slugMap,
+		Ancestors:       ancestors,
+		Parent:          parentRef,
+		OrderHint:       c.OrderHint,
+		MetaTitle:       metaTitle,
+		MetaDescription: metaDesc,
+		Description:     descMap,
+	}
 }
 
 func toCTProduct(p domain.Product) ctProduct {
@@ -423,26 +493,4 @@ func containsCategory(p domain.Product, categoryID string) bool {
 		return v == categoryID
 	}
 	return false
-}
-
-func toCTCategory(c domain.Category) ctCategory {
-	name := c.Name
-	if name == "" {
-		name = c.Key
-	}
-	nameMap := map[string]string{"en": name}
-	slugMap := map[string]string{"en": c.Slug}
-	return ctCategory{
-		ID:             c.ID,
-		Key:            c.Key,
-		Version:        1,
-		CreatedAt:      c.CreatedAt,
-		LastModifiedAt: c.CreatedAt,
-		Name:           nameMap,
-		Slug:           slugMap,
-		Ancestors:      []interface{}{},
-		Parent:         nil,
-		OrderHint:      "",
-		MetaTitle:      nameMap,
-	}
 }

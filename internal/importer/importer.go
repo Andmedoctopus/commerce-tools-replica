@@ -27,6 +27,7 @@ type CSVImporter struct {
 	categoryRepo CategoryWriter
 	categorySeen map[string]struct{}
 	projectID    string
+	lastKind     string
 }
 
 func NewCSVImporter(r io.Reader, repo ProductWriter, catRepo CategoryWriter, projectID string) *CSVImporter {
@@ -38,6 +39,7 @@ func NewCSVImporter(r io.Reader, repo ProductWriter, catRepo CategoryWriter, pro
 		categoryRepo: catRepo,
 		categorySeen: make(map[string]struct{}),
 		projectID:    projectID,
+		lastKind:     "products",
 	}
 }
 
@@ -54,13 +56,34 @@ type csvRow struct {
 	ProductType string
 }
 
+type categoryRow struct {
+	Key             string
+	Name            string
+	Slug            string
+	ParentKey       string
+	OrderHint       string
+	Description     string
+	MetaTitle       string
+	MetaDescription string
+}
+
 // Run parses CSV rows and upserts products grouped by product key.
 func (i *CSVImporter) Run(ctx context.Context) (int, error) {
 	headers, err := i.reader.Read()
 	if err != nil {
 		return 0, fmt.Errorf("read headers: %w", err)
 	}
+
 	index := headerIndex(headers)
+
+	if isCategoryFile(index) {
+		i.lastKind = "categories"
+		if i.categoryRepo == nil {
+			return 0, fmt.Errorf("category import requested but category repo is nil")
+		}
+		return i.runCategories(ctx, index)
+	}
+	i.lastKind = "products"
 
 	var (
 		current  *csvRow
@@ -106,6 +129,10 @@ func (i *CSVImporter) Run(ctx context.Context) (int, error) {
 	}
 
 	return imported, nil
+}
+
+func (i *CSVImporter) Kind() string {
+	return i.lastKind
 }
 
 func (i *CSVImporter) save(ctx context.Context, row *csvRow) error {
@@ -176,6 +203,13 @@ func headerIndex(headers []string) map[string]int {
 		idx[h] = i
 	}
 	return idx
+}
+
+func isCategoryFile(idx map[string]int) bool {
+	_, hasParent := idx["parent.key"]
+	_, hasSlug := idx["slug.en"]
+	_, hasProductSKU := idx["variants.sku"]
+	return (hasParent || hasSlug) && !hasProductSKU
 }
 
 func parseRow(record []string, index map[string]int) *csvRow {
@@ -291,5 +325,88 @@ func pickCategoryKeys(row *csvRow) []string {
 	if row.ProductType != "" {
 		return []string{row.ProductType}
 	}
+	return nil
+}
+
+func (i *CSVImporter) runCategories(ctx context.Context, index map[string]int) (int, error) {
+	imported := 0
+	for {
+		record, err := i.reader.Read()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			return imported, fmt.Errorf("read row: %w", err)
+		}
+		row := parseCategoryRow(record, index)
+		if row == nil {
+			continue
+		}
+		if err := i.saveCategory(ctx, row); err != nil {
+			return imported, err
+		}
+		imported++
+	}
+	return imported, nil
+}
+
+func parseCategoryRow(record []string, index map[string]int) *categoryRow {
+	key := pick(record, index, "key")
+	name := pick(record, index, "name.en")
+	slug := pick(record, index, "slug.en")
+	parent := pick(record, index, "parent.key")
+	order := pick(record, index, "orderHint")
+	desc := pick(record, index, "description.en")
+	metaTitle := pick(record, index, "metaTitle.en")
+	metaDesc := pick(record, index, "metaDescription.en")
+
+	if key == "" {
+		key = slug
+	}
+	if key == "" {
+		return nil
+	}
+	if slug == "" {
+		slug = key
+	}
+	if name == "" {
+		name = displayNameFromKey(key)
+	}
+
+	return &categoryRow{
+		Key:             key,
+		Name:            name,
+		Slug:            slug,
+		ParentKey:       parent,
+		OrderHint:       order,
+		Description:     desc,
+		MetaTitle:       metaTitle,
+		MetaDescription: metaDesc,
+	}
+}
+
+func (i *CSVImporter) saveCategory(ctx context.Context, row *categoryRow) error {
+	key := normalizeCategoryKey(row.Key)
+	if key == "" {
+		return nil
+	}
+	if _, ok := i.categorySeen[key]; ok {
+		return nil
+	}
+	_, err := i.categoryRepo.Upsert(ctx, domain.Category{
+		ProjectID:       i.projectID,
+		Key:             key,
+		Name:            row.Name,
+		Slug:            row.Slug,
+		OrderHint:       row.OrderHint,
+		ParentKey:       normalizeCategoryKey(row.ParentKey),
+		Description:     row.Description,
+		MetaTitle:       row.MetaTitle,
+		MetaDescription: row.MetaDescription,
+	})
+	if err != nil {
+		return fmt.Errorf("upsert category %q: %w", key, err)
+	}
+	i.categorySeen[key] = struct{}{}
 	return nil
 }

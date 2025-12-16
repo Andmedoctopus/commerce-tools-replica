@@ -73,7 +73,7 @@ func main() {
 		log.Fatalf("import failed: %v", err)
 	}
 
-	fmt.Printf("Imported %d products into project %s in %s\n", count, projectKey, time.Since(start).Truncate(time.Millisecond))
+	fmt.Printf("Imported %d %s into project %s in %s\n", count, imp.Kind(), projectKey, time.Since(start).Truncate(time.Millisecond))
 }
 
 func ensureProject(ctx context.Context, repo project.Repository, key string) (*domain.Project, error) {
