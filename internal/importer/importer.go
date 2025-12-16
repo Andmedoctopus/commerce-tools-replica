@@ -329,19 +329,26 @@ func pickCategoryKeys(row *csvRow) []string {
 }
 
 func (i *CSVImporter) runCategories(ctx context.Context, index map[string]int) (int, error) {
-	imported := 0
+	var rows []*categoryRow
 	for {
 		record, err := i.reader.Read()
 		if errors.Is(err, io.EOF) {
 			break
 		}
 		if err != nil {
-			return imported, fmt.Errorf("read row: %w", err)
+			return 0, fmt.Errorf("read row: %w", err)
 		}
 		row := parseCategoryRow(record, index)
 		if row == nil {
 			continue
 		}
+		rows = append(rows, row)
+	}
+
+	rows = inferCategoryParents(rows)
+
+	imported := 0
+	for _, row := range rows {
 		if err := i.saveCategory(ctx, row); err != nil {
 			return imported, err
 		}
@@ -383,6 +390,54 @@ func parseCategoryRow(record []string, index map[string]int) *categoryRow {
 		MetaTitle:       metaTitle,
 		MetaDescription: metaDesc,
 	}
+}
+
+func inferCategoryParents(rows []*categoryRow) []*categoryRow {
+	primaryToKey := make(map[string]string)
+	for _, r := range rows {
+		r.Key = normalizeCategoryKey(r.Key)
+		r.ParentKey = normalizeCategoryKey(r.ParentKey)
+		primary := primaryOrderHint(r.OrderHint)
+		if primary == "" || strings.Contains(strings.TrimSpace(r.OrderHint), ".") {
+			continue
+		}
+		if r.Key != "" {
+			if _, exists := primaryToKey[primary]; !exists {
+				primaryToKey[primary] = r.Key
+			}
+		}
+	}
+
+	for _, r := range rows {
+		if r.ParentKey != "" {
+			continue
+		}
+		if pk := inferParentKeyFromOrderHint(r.OrderHint, primaryToKey); pk != "" && pk != r.Key {
+			r.ParentKey = pk
+		}
+	}
+	return rows
+}
+
+func primaryOrderHint(orderHint string) string {
+	orderHint = strings.TrimSpace(orderHint)
+	if orderHint == "" {
+		return ""
+	}
+	parts := strings.Split(orderHint, ".")
+	return parts[0]
+}
+
+func inferParentKeyFromOrderHint(orderHint string, primaryToKey map[string]string) string {
+	orderHint = strings.TrimSpace(orderHint)
+	if orderHint == "" {
+		return ""
+	}
+	parts := strings.Split(orderHint, ".")
+	if len(parts) < 2 {
+		return ""
+	}
+	return primaryToKey[parts[0]]
 }
 
 func (i *CSVImporter) saveCategory(ctx context.Context, row *categoryRow) error {

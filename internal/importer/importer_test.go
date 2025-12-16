@@ -67,9 +67,11 @@ func TestCSVImporter_Run(t *testing.T) {
 
 func TestCSVImporter_RunCategoriesFile(t *testing.T) {
 	csvData := `key,name.en,slug.en,parent.key,orderHint,description.en,metaTitle.en,metaDescription.en
-indoor-pots,Indoor Pots,indoor-pots,pots,4.1,Desc indoor,Meta indoor,Meta desc indoor
+indoor-pots,Indoor Pots,indoor-pots,,4.1,Desc indoor,Meta indoor,Meta desc indoor
 ,Foliage plants,foliage-plants,,3.3,Desc foliage,,
 succulents,Succulents,,,,"",,Meta desc succ
+,Indoor plants,indoor-plants,,3,,,
+,Pots,pots,,4,,,
 `
 	catRepo := &stubCategoryRepo{}
 	imp := NewCSVImporter(strings.NewReader(csvData), nil, catRepo, "project-123")
@@ -78,16 +80,19 @@ succulents,Succulents,,,,"",,Meta desc succ
 	if err != nil {
 		t.Fatalf("import run: %v", err)
 	}
-	if count != 3 {
-		t.Fatalf("expected 3 categories imported, got %d", count)
+	if count != 5 {
+		t.Fatalf("expected 5 categories imported, got %d", count)
 	}
 	if catRepo.items[0].Key != "indoor-pots" || catRepo.items[0].OrderHint != "4.1" || catRepo.items[0].ParentKey != "pots" || catRepo.items[0].Description != "Desc indoor" || catRepo.items[0].MetaTitle != "Meta indoor" || catRepo.items[0].MetaDescription != "Meta desc indoor" {
 		t.Fatalf("unexpected first category %+v", catRepo.items[0])
 	}
-	if catRepo.items[1].Key != "foliage-plants" || catRepo.items[1].Slug != "foliage-plants" {
-		t.Fatalf("expected slug fallback on second: %+v", catRepo.items[1])
+	if catRepo.items[1].Key != "foliage-plants" || catRepo.items[1].Slug != "foliage-plants" || catRepo.items[1].ParentKey != "indoor-plants" {
+		t.Fatalf("expected slug fallback and inferred parent on second: %+v", catRepo.items[1])
 	}
-	if catRepo.items[2].Name != "Succulents" {
-		t.Fatalf("expected title-cased name, got %s", catRepo.items[2].Name)
+	if catRepo.items[2].Name != "Succulents" || catRepo.items[2].ParentKey != "" {
+		t.Fatalf("expected title-cased root name, got %+v", catRepo.items[2])
+	}
+	if catRepo.items[3].Key != "indoor-plants" || catRepo.items[4].Key != "pots" {
+		t.Fatalf("expected root categories to be imported, got %v and %v", catRepo.items[3].Key, catRepo.items[4].Key)
 	}
 }
