@@ -27,24 +27,26 @@ type CategoryWriter interface {
 
 // CSVImporter reads commercetools-like CSV exports and inserts/updates products.
 type CSVImporter struct {
-	reader       *csv.Reader
-	productRepo  ProductWriter
-	categoryRepo CategoryWriter
-	categorySeen map[string]struct{}
-	projectID    string
-	lastKind     string
+	reader          *csv.Reader
+	productRepo     ProductWriter
+	categoryRepo    CategoryWriter
+	categorySeen    map[string]struct{}
+	categoryIDByKey map[string]string
+	projectID       string
+	lastKind        string
 }
 
 func NewCSVImporter(r io.Reader, repo ProductWriter, catRepo CategoryWriter, projectID string) *CSVImporter {
 	csvr := csv.NewReader(r)
 	csvr.FieldsPerRecord = -1 // rows may have trailing commas
 	return &CSVImporter{
-		reader:       csvr,
-		productRepo:  repo,
-		categoryRepo: catRepo,
-		categorySeen: make(map[string]struct{}),
-		projectID:    projectID,
-		lastKind:     KindProducts,
+		reader:          csvr,
+		productRepo:     repo,
+		categoryRepo:    catRepo,
+		categorySeen:    make(map[string]struct{}),
+		categoryIDByKey: make(map[string]string),
+		projectID:       projectID,
+		lastKind:        KindProducts,
 	}
 }
 
@@ -170,6 +172,16 @@ func (i *CSVImporter) save(ctx context.Context, row *csvRow) error {
 	}
 	catKeys := pickCategoryKeys(row)
 	if len(catKeys) > 0 {
+		attrs["categoryKeys"] = catKeys
+	}
+	catIDs, err := i.ensureCategoryIDs(ctx, catKeys)
+	if err != nil {
+		return err
+	}
+	if len(catIDs) > 0 {
+		attrs["categories"] = catIDs
+	} else if len(catKeys) > 0 {
+		// Fallback for cases where categoryRepo isn't configured.
 		attrs["categories"] = catKeys
 	}
 
@@ -185,37 +197,50 @@ func (i *CSVImporter) save(ctx context.Context, row *csvRow) error {
 		Attributes:  attrs,
 	}
 
-	_, err := i.productRepo.Upsert(ctx, p)
+	_, err = i.productRepo.Upsert(ctx, p)
 	if err != nil {
 		return fmt.Errorf("upsert product %q: %w", row.Key, err)
 	}
-
-	if i.categoryRepo != nil {
-		seen := make(map[string]struct{})
-		for _, cat := range catKeys {
-			cat = strings.TrimSpace(cat)
-			if cat == "" {
-				continue
-			}
-			if _, ok := seen[cat]; ok {
-				continue
-			}
-			seen[cat] = struct{}{}
-			if _, ok := i.categorySeen[cat]; ok {
-				continue
-			}
-			if _, err := i.categoryRepo.Upsert(ctx, domain.Category{
-				ProjectID: i.projectID,
-				Key:       cat,
-				Name:      displayNameFromKey(cat),
-				Slug:      cat,
-			}); err != nil {
-				return fmt.Errorf("upsert category %q: %w", cat, err)
-			}
-			i.categorySeen[cat] = struct{}{}
-		}
-	}
 	return nil
+}
+
+func (i *CSVImporter) ensureCategoryIDs(ctx context.Context, catKeys []string) ([]string, error) {
+	if i.categoryRepo == nil {
+		return nil, nil
+	}
+	seen := make(map[string]struct{})
+	var ids []string
+	for _, rawKey := range catKeys {
+		key := normalizeCategoryKey(rawKey)
+		if key == "" {
+			continue
+		}
+		if _, ok := seen[key]; ok {
+			continue
+		}
+		seen[key] = struct{}{}
+
+		if id, ok := i.categoryIDByKey[key]; ok && id != "" {
+			ids = append(ids, id)
+			continue
+		}
+
+		out, err := i.categoryRepo.Upsert(ctx, domain.Category{
+			ProjectID: i.projectID,
+			Key:       key,
+			Name:      displayNameFromKey(key),
+			Slug:      key,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("upsert category %q: %w", key, err)
+		}
+		if out != nil && out.ID != "" {
+			i.categoryIDByKey[key] = out.ID
+			ids = append(ids, out.ID)
+		}
+		i.categorySeen[key] = struct{}{}
+	}
+	return ids, nil
 }
 
 func headerIndex(headers []string) map[string]int {
@@ -469,7 +494,7 @@ func (i *CSVImporter) saveCategory(ctx context.Context, row *categoryRow) error 
 	if _, ok := i.categorySeen[key]; ok {
 		return nil
 	}
-	_, err := i.categoryRepo.Upsert(ctx, domain.Category{
+	out, err := i.categoryRepo.Upsert(ctx, domain.Category{
 		ProjectID:       i.projectID,
 		Key:             key,
 		Name:            row.Name,
@@ -482,6 +507,9 @@ func (i *CSVImporter) saveCategory(ctx context.Context, row *categoryRow) error 
 	})
 	if err != nil {
 		return fmt.Errorf("upsert category %q: %w", key, err)
+	}
+	if out != nil && out.ID != "" {
+		i.categoryIDByKey[key] = out.ID
 	}
 	i.categorySeen[key] = struct{}{}
 	return nil

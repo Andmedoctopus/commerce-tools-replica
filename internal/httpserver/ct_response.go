@@ -362,8 +362,9 @@ func extractImages(attrs map[string]interface{}) []ctImage {
 	return images
 }
 
-func buildSearchResponse(products []domain.Product, req searchRequest) searchResponse {
-	products = filterProducts(products, req)
+func buildSearchResponse(products []domain.Product, categories []domain.Category, req searchRequest) searchResponse {
+	idToKey, keyToID := categoryMaps(categories)
+	products = filterProducts(products, req, idToKey, keyToID)
 	sortProducts(products, req)
 	offset := req.Offset
 	if offset < 0 {
@@ -397,7 +398,22 @@ func buildSearchResponse(products []domain.Product, req searchRequest) searchRes
 	}
 }
 
-func filterProducts(products []domain.Product, req searchRequest) []domain.Product {
+func categoryMaps(categories []domain.Category) (map[string]string, map[string]string) {
+	if len(categories) == 0 {
+		return nil, nil
+	}
+	idToKey := make(map[string]string, len(categories))
+	keyToID := make(map[string]string, len(categories))
+	for _, c := range categories {
+		if c.ID != "" && c.Key != "" {
+			idToKey[c.ID] = c.Key
+			keyToID[c.Key] = c.ID
+		}
+	}
+	return idToKey, keyToID
+}
+
+func filterProducts(products []domain.Product, req searchRequest, categoryIDToKey map[string]string, categoryKeyToID map[string]string) []domain.Product {
 	var prange *rangeFilter
 	var category string
 	for _, f := range req.Query.Filter {
@@ -406,6 +422,21 @@ func filterProducts(products []domain.Product, req searchRequest) []domain.Produ
 		}
 		if f.Exact != nil && f.Exact.Field == "categories" {
 			category = f.Exact.Value
+		}
+	}
+
+	var categoryTargets []string
+	if category != "" {
+		categoryTargets = append(categoryTargets, category)
+		if categoryIDToKey != nil {
+			if k := categoryIDToKey[category]; k != "" {
+				categoryTargets = append(categoryTargets, k)
+			}
+		}
+		if categoryKeyToID != nil {
+			if id := categoryKeyToID[category]; id != "" {
+				categoryTargets = append(categoryTargets, id)
+			}
 		}
 	}
 
@@ -419,8 +450,8 @@ func filterProducts(products []domain.Product, req searchRequest) []domain.Produ
 				continue
 			}
 		}
-		if category != "" {
-			if !containsCategory(p, category) {
+		if len(categoryTargets) > 0 {
+			if !containsAnyCategory(p, categoryTargets) {
 				continue
 			}
 		}
@@ -471,7 +502,7 @@ func sortProducts(products []domain.Product, req searchRequest) {
 	sort.Slice(products, less)
 }
 
-func containsCategory(p domain.Product, categoryID string) bool {
+func containsAnyCategory(p domain.Product, candidates []string) bool {
 	raw, ok := p.Attributes["categories"]
 	if !ok {
 		return false
@@ -479,18 +510,30 @@ func containsCategory(p domain.Product, categoryID string) bool {
 	switch v := raw.(type) {
 	case []interface{}:
 		for _, c := range v {
-			if s, ok := c.(string); ok && s == categoryID {
-				return true
+			s, ok := c.(string)
+			if !ok {
+				continue
+			}
+			for _, candidate := range candidates {
+				if s == candidate {
+					return true
+				}
 			}
 		}
 	case []string:
 		for _, s := range v {
-			if s == categoryID {
-				return true
+			for _, candidate := range candidates {
+				if s == candidate {
+					return true
+				}
 			}
 		}
 	case string:
-		return v == categoryID
+		for _, candidate := range candidates {
+			if v == candidate {
+				return true
+			}
+		}
 	}
 	return false
 }

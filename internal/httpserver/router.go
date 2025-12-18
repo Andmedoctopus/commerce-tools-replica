@@ -119,7 +119,13 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 				return
 			}
 
-			resp := buildSearchResponse(products, req)
+			cats, err := deps.CategorySvc.List(c.Request.Context(), project.ID)
+			if err != nil {
+				// Don't fail the search entirely if categories lookup fails; just skip ID<->key mapping.
+				logger.Printf("products search categories list error project_id=%s error=%v", project.ID, err)
+				cats = nil
+			}
+			resp := buildSearchResponse(products, cats, req)
 			c.JSON(http.StatusOK, resp)
 		})
 		group.GET("/categories", func(c *gin.Context) {

@@ -226,13 +226,13 @@ func TestProductsHandler_Search(t *testing.T) {
 	projectRepo := &stubProjectRepo{project: proj}
 	productSvc := &stubProductService{
 		listResult: []domain.Product{
-			{ID: "b-id", ProjectID: proj.ID, Name: "Beta", Key: "b", SKU: "SKU2", PriceCents: 100, Currency: "EUR", Attributes: map[string]interface{}{"categories": []string{"cat-1"}}},
+			{ID: "b-id", ProjectID: proj.ID, Name: "Beta", Key: "b", SKU: "SKU2", PriceCents: 100, Currency: "EUR", Attributes: map[string]interface{}{"categories": []string{"cactus"}}},
 			{ID: "a-id", ProjectID: proj.ID, Name: "Alpha", Key: "a", SKU: "SKU1", PriceCents: 200, Currency: "EUR", Attributes: map[string]interface{}{"categories": []string{"cat-2"}}},
 		},
 	}
 	cartSvc := &stubCartService{}
 	categorySvc := &stubCategoryService{
-		list: []domain.Category{{ID: "cat-1", Key: "cat-1", Name: "Cat 1", ProjectID: proj.ID}},
+		list: []domain.Category{{ID: "cat-uuid-1", Key: "cactus", Name: "Cactus", ProjectID: proj.ID}},
 	}
 	router, err := buildRouter(logDiscard(), nil, Deps{
 		ProjectRepo: projectRepo,
@@ -244,7 +244,7 @@ func TestProductsHandler_Search(t *testing.T) {
 		t.Fatalf("build router: %v", err)
 	}
 
-	body := `{"limit":1,"offset":0,"query":{"filter":[{"range":{"field":"variants.prices.centAmount","fieldType":"long","gte":0,"lte":150}},{"exact":{"field":"categories","value":"cat-1"}}]}}`
+	body := `{"limit":1,"offset":0,"query":{"filter":[{"range":{"field":"variants.prices.centAmount","fieldType":"long","gte":0,"lte":150}},{"exact":{"field":"categories","value":"cat-uuid-1"}}]}}`
 	req := httptest.NewRequest(http.MethodPost, "/proj-key/products/search", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()

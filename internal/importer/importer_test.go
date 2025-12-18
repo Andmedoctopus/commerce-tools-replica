@@ -14,6 +14,7 @@ type stubProductRepo struct {
 
 type stubCategoryRepo struct {
 	items []domain.Category
+	byKey map[string]domain.Category
 }
 
 func (s *stubProductRepo) Upsert(_ context.Context, p domain.Product) (*domain.Product, error) {
@@ -22,6 +23,14 @@ func (s *stubProductRepo) Upsert(_ context.Context, p domain.Product) (*domain.P
 }
 
 func (s *stubCategoryRepo) Upsert(_ context.Context, c domain.Category) (*domain.Category, error) {
+	if s.byKey == nil {
+		s.byKey = make(map[string]domain.Category)
+	}
+	if existing, ok := s.byKey[c.Key]; ok {
+		return &existing, nil
+	}
+	c.ID = "id-" + c.Key
+	s.byKey[c.Key] = c
 	s.items = append(s.items, c)
 	return &c, nil
 }
@@ -57,8 +66,11 @@ func TestCSVImporter_Run(t *testing.T) {
 	if repo.items[0].ID != "00000000-0000-0000-0000-000000000001" {
 		t.Fatalf("expected id to be preserved, got %s", repo.items[0].ID)
 	}
-	if cats, ok := repo.items[0].Attributes["categories"].([]string); !ok || len(cats) != 2 {
-		t.Fatalf("expected categories on first product, got %+v", repo.items[0].Attributes["categories"])
+	if cats, ok := repo.items[0].Attributes["categories"].([]string); !ok || len(cats) != 2 || cats[0] != "id-cat-1" || cats[1] != "id-cat-2" {
+		t.Fatalf("expected category IDs on first product, got %+v", repo.items[0].Attributes["categories"])
+	}
+	if keys, ok := repo.items[0].Attributes["categoryKeys"].([]string); !ok || len(keys) != 2 || keys[0] != "cat-1" || keys[1] != "cat-2" {
+		t.Fatalf("expected category keys preserved on first product, got %+v", repo.items[0].Attributes["categoryKeys"])
 	}
 	if len(catRepo.items) != 3 { // cat-1, cat-2, productType fallback (succulents)
 		t.Fatalf("expected 3 category upserts, got %d", len(catRepo.items))
