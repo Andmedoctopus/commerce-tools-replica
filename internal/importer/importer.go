@@ -12,6 +12,11 @@ import (
 	"commercetools-replica/internal/domain"
 )
 
+const (
+	KindProducts   = "products"
+	KindCategories = "categories"
+)
+
 type ProductWriter interface {
 	Upsert(ctx context.Context, product domain.Product) (*domain.Product, error)
 }
@@ -39,7 +44,7 @@ func NewCSVImporter(r io.Reader, repo ProductWriter, catRepo CategoryWriter, pro
 		categoryRepo: catRepo,
 		categorySeen: make(map[string]struct{}),
 		projectID:    projectID,
-		lastKind:     "products",
+		lastKind:     KindProducts,
 	}
 }
 
@@ -77,13 +82,13 @@ func (i *CSVImporter) Run(ctx context.Context) (int, error) {
 	index := headerIndex(headers)
 
 	if isCategoryFile(index) {
-		i.lastKind = "categories"
+		i.lastKind = KindCategories
 		if i.categoryRepo == nil {
 			return 0, fmt.Errorf("category import requested but category repo is nil")
 		}
 		return i.runCategories(ctx, index)
 	}
-	i.lastKind = "products"
+	i.lastKind = KindProducts
 
 	var (
 		current  *csvRow
@@ -133,6 +138,22 @@ func (i *CSVImporter) Run(ctx context.Context) (int, error) {
 
 func (i *CSVImporter) Kind() string {
 	return i.lastKind
+}
+
+// DetectKind inspects the headers of a commercetools export to determine if it
+// is a product or category file.
+func DetectKind(r io.Reader) (string, error) {
+	csvr := csv.NewReader(r)
+	csvr.FieldsPerRecord = -1
+
+	headers, err := csvr.Read()
+	if err != nil {
+		return "", fmt.Errorf("read headers: %w", err)
+	}
+	if isCategoryFile(headerIndex(headers)) {
+		return KindCategories, nil
+	}
+	return KindProducts, nil
 }
 
 func (i *CSVImporter) save(ctx context.Context, row *csvRow) error {

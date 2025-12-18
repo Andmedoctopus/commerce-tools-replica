@@ -6,6 +6,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"io/fs"
 
 	"github.com/golang-migrate/migrate/v4"
 	"github.com/golang-migrate/migrate/v4/database/postgres"
@@ -46,6 +47,9 @@ func Apply(ctx context.Context, pool *pgxpool.Pool) error {
 	defer m.Close()
 
 	if err := m.Up(); err != nil && !errors.Is(err, migrate.ErrNoChange) {
+		if errors.Is(err, fs.ErrNotExist) {
+			return fmt.Errorf("migrate up: %w (hint: ensure every migration version has both `.up.sql` and `.down.sql`, and rebuild the Docker image since migrations are embedded in the `migrate` binary)", err)
+		}
 		return fmt.Errorf("migrate up: %w", err)
 	}
 	return nil

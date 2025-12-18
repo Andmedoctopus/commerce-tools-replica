@@ -96,3 +96,26 @@ succulents,Succulents,,,,"",,Meta desc succ
 		t.Fatalf("expected root categories to be imported, got %v and %v", catRepo.items[3].Key, catRepo.items[4].Key)
 	}
 }
+
+func TestDetectKind(t *testing.T) {
+	productCSV := `id,key,name.en,variants.sku
+prod-1,prod-1,Prod One,SKU-1`
+	categoryCSV := `key,name.en,slug.en,parent.key
+indoor-pots,Indoor Pots,indoor-pots,`
+
+	kind, err := DetectKind(strings.NewReader(productCSV))
+	if err != nil {
+		t.Fatalf("detect product kind: %v", err)
+	}
+	if kind != KindProducts {
+		t.Fatalf("expected product kind, got %s", kind)
+	}
+
+	kind, err = DetectKind(strings.NewReader(categoryCSV))
+	if err != nil {
+		t.Fatalf("detect category kind: %v", err)
+	}
+	if kind != KindCategories {
+		t.Fatalf("expected category kind, got %s", kind)
+	}
+}

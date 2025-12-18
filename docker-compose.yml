@@ -14,6 +14,8 @@ services:
       POSTGRES_DB: commerce_test
       POSTGRES_USER: commerce
       POSTGRES_PASSWORD: commerce
+    ports:
+      - "5433:5432"
     volumes:
       - db_test_data:/var/lib/postgresql/data
     healthcheck:

@@ -187,15 +187,31 @@ func TestPostgres_UpsertIDMismatch(t *testing.T) {
 
 func testPool(ctx context.Context, t *testing.T) *pgxpool.Pool {
 	t.Helper()
-	dsn := os.Getenv("TEST_DB_DSN")
-	if dsn == "" {
-		dsn = "postgres://commerce:commerce@db-test:5432/commerce_test?sslmode=disable"
+	candidates := []string{
+		os.Getenv("TEST_DB_DSN"),
+		"postgres://commerce:commerce@db-test:5432/commerce_test?sslmode=disable",
+		"postgres://commerce:commerce@localhost:5433/commerce_test?sslmode=disable",
 	}
-	pool, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatalf("connect db: %v", err)
+
+	var lastErr error
+	for _, dsn := range candidates {
+		if dsn == "" {
+			continue
+		}
+		pool, err := pgxpool.New(ctx, dsn)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		if err := pool.Ping(ctx); err != nil {
+			lastErr = err
+			pool.Close()
+			continue
+		}
+		return pool
 	}
-	return pool
+	t.Fatalf("connect db: %v", lastErr)
+	return nil
 }
 
 func resetTables(ctx context.Context, t *testing.T, pool *pgxpool.Pool) {
