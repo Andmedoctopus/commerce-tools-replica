@@ -6,10 +6,10 @@ Partial commercetools-compatible API (Go + Postgres), runnable via Docker Compos
 - Docker + Docker Compose
 - `./devenv` script available (uses the `dev` container)
 
-## Quick start
-1) Bring up infra (db, dev): `docker compose up -d db db-test dev`
-2) Run migrations: `./devenv go run ./cmd/migrate`
-   - If you run migrations via the Compose `migrate` service (e.g. `docker compose up api`) and you edit/add migration SQL, rebuild the image (`docker compose up --build migrate`) because migrations are embedded into the `migrate` binary.
+ ## Quick start
+ 1) Bring up infra (db, dev): `docker compose up -d db db-test dev`
+ 2) Run migrations: `./devenv go run ./cmd/migrate`
+   - The Compose `migrate` service now runs `go run ./cmd/migrate` inside the `dev` image with your repo bind-mounted, so it always picks up the latest SQL.
 3) Import data:
    - Place commercetools exports under `imports/<projectKey>/` (e.g. `imports/petal_pot/Categories_...csv`, `imports/petal_pot/Products_...csv`)
 

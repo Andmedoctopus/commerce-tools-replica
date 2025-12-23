@@ -39,12 +39,11 @@ services:
   migrate:
     extends:
       file: docker-compose.app.yml
-      service: app
+      service: dev-base
     depends_on:
       db:
         condition: service_healthy
-    entrypoint: ["/srv/migrate"]
-    command: []
+    command: go run ./cmd/migrate
     profiles: []
 
   api-dev:
