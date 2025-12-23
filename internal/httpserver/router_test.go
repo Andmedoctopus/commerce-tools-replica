@@ -12,6 +12,7 @@ import (
 
 	"commercetools-replica/internal/domain"
 	cartsvc "commercetools-replica/internal/service/cart"
+	customersvc "commercetools-replica/internal/service/customer"
 	"github.com/gin-gonic/gin"
 )
 
@@ -155,6 +156,27 @@ func (s *stubCategoryService) Upsert(_ context.Context, c domain.Category) (*dom
 	return &c, s.err
 }
 
+type stubCustomerService struct {
+	customer *domain.Customer
+	err      error
+}
+
+func (s *stubCustomerService) Signup(_ context.Context, _ string, _ customersvc.SignupInput) (*domain.Customer, error) {
+	return s.customer, s.err
+}
+
+func (s *stubCustomerService) Login(_ context.Context, _ string, _ string, _ string) (*domain.Customer, string, string, error) {
+	return s.customer, "access-token", "refresh-token", s.err
+}
+
+func (s *stubCustomerService) LookupByToken(_ context.Context, _ string, _ string) (*domain.Customer, error) {
+	return s.customer, s.err
+}
+
+func (s *stubCustomerService) AccessTTLSeconds() int {
+	return 3600
+}
+
 func TestProductsHandler_List(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	proj := &domain.Project{ID: "proj-id", Key: "proj-key"}
@@ -166,11 +188,13 @@ func TestProductsHandler_List(t *testing.T) {
 	}
 	cartSvc := &stubCartService{}
 	categorySvc := &stubCategoryService{}
+	customerSvc := &stubCustomerService{customer: &domain.Customer{ID: "cust-id", ProjectID: proj.ID, Email: "a@example.com"}}
 	router, err := buildRouter(logDiscard(), nil, Deps{
 		ProjectRepo: projectRepo,
 		ProductSvc:  productSvc,
 		CartSvc:     cartSvc,
 		CategorySvc: categorySvc,
+		CustomerSvc: customerSvc,
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -198,11 +222,13 @@ func TestProductsHandler_Get_NotFound(t *testing.T) {
 	}
 	cartSvc := &stubCartService{}
 	categorySvc := &stubCategoryService{}
+	customerSvc := &stubCustomerService{customer: &domain.Customer{ID: "cust-id", ProjectID: proj.ID}}
 	router, err := buildRouter(logDiscard(), nil, Deps{
 		ProjectRepo: projectRepo,
 		ProductSvc:  productSvc,
 		CartSvc:     cartSvc,
 		CategorySvc: categorySvc,
+		CustomerSvc: customerSvc,
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -234,11 +260,13 @@ func TestProductsHandler_Search(t *testing.T) {
 	categorySvc := &stubCategoryService{
 		list: []domain.Category{{ID: "cat-uuid-1", Key: "cactus", Name: "Cactus", ProjectID: proj.ID}},
 	}
+	customerSvc := &stubCustomerService{customer: &domain.Customer{ID: "cust-id", ProjectID: proj.ID}}
 	router, err := buildRouter(logDiscard(), nil, Deps{
 		ProjectRepo: projectRepo,
 		ProductSvc:  productSvc,
 		CartSvc:     cartSvc,
 		CategorySvc: categorySvc,
+		CustomerSvc: customerSvc,
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -271,11 +299,13 @@ func TestProductsHandler_SearchSortByPriceDesc(t *testing.T) {
 	}
 	cartSvc := &stubCartService{}
 	categorySvc := &stubCategoryService{}
+	customerSvc := &stubCustomerService{customer: &domain.Customer{ID: "cust-id", ProjectID: proj.ID}}
 	router, err := buildRouter(logDiscard(), nil, Deps{
 		ProjectRepo: projectRepo,
 		ProductSvc:  productSvc,
 		CartSvc:     cartSvc,
 		CategorySvc: categorySvc,
+		CustomerSvc: customerSvc,
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -314,12 +344,14 @@ func TestCategoriesHandler_List(t *testing.T) {
 			{ID: "cat-2", Key: "cat-2", Name: "Cat 2", Slug: "cat-2", ProjectID: proj.ID},
 		},
 	}
+	customerSvc := &stubCustomerService{customer: &domain.Customer{ID: "cust-id", ProjectID: proj.ID}}
 
 	router, err := buildRouter(logDiscard(), nil, Deps{
 		ProjectRepo: projectRepo,
 		ProductSvc:  productSvc,
 		CartSvc:     cartSvc,
 		CategorySvc: categorySvc,
+		CustomerSvc: customerSvc,
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)

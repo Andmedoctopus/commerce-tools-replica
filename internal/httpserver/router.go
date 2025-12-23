@@ -11,6 +11,7 @@ import (
 	"commercetools-replica/internal/domain"
 	projectrepo "commercetools-replica/internal/repository/project"
 	cartsvc "commercetools-replica/internal/service/cart"
+	customersvc "commercetools-replica/internal/service/customer"
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -31,11 +32,19 @@ type categoryService interface {
 	Upsert(ctx context.Context, c domain.Category) (*domain.Category, error)
 }
 
+type customerService interface {
+	Signup(ctx context.Context, projectID string, in customersvc.SignupInput) (*domain.Customer, error)
+	Login(ctx context.Context, projectID, email, password string) (*domain.Customer, string, string, error)
+	LookupByToken(ctx context.Context, projectID, token string) (*domain.Customer, error)
+	AccessTTLSeconds() int
+}
+
 type Deps struct {
 	ProjectRepo projectrepo.Repository
 	ProductSvc  productService
 	CartSvc     cartService
 	CategorySvc categoryService
+	CustomerSvc customerService
 }
 
 func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, error) {
@@ -50,6 +59,9 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 	}
 	if deps.CategorySvc == nil {
 		return nil, errors.New("CategorySvc is required")
+	}
+	if deps.CustomerSvc == nil {
+		return nil, errors.New("CustomerSvc is required")
 	}
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
@@ -71,6 +83,79 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 	router.GET("/readyz", readyHandler(db))
 
 	registerProjectRoutes := func(group *gin.RouterGroup) {
+		group.POST("/me/signup", func(c *gin.Context) {
+			project := mustProject(c)
+
+			var req signupRequest
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+				return
+			}
+
+			in := customersvc.SignupInput{
+				Email:                  req.Email,
+				Password:               req.Password,
+				FirstName:              req.FirstName,
+				LastName:               req.LastName,
+				DateOfBirth:            req.DateOfBirth,
+				DefaultShippingAddress: req.DefaultShippingAddress,
+				DefaultBillingAddress:  req.DefaultBillingAddress,
+			}
+			for _, a := range req.Addresses {
+				in.Addresses = append(in.Addresses, customersvc.AddressInput{
+					FirstName:  a.FirstName,
+					LastName:   a.LastName,
+					Country:    a.Country,
+					StreetName: a.StreetName,
+					PostalCode: a.PostalCode,
+					City:       a.City,
+					Email:      a.Email,
+					Department: a.Department,
+				})
+			}
+
+			customer, err := deps.CustomerSvc.Signup(c.Request.Context(), project.ID, in)
+			if err != nil {
+				logger.Printf("customer signup error project_id=%s email=%s error=%v", project.ID, req.Email, err)
+				status := http.StatusInternalServerError
+				msg := "signup failed"
+				switch {
+				case errors.Is(err, domain.ErrAlreadyExists):
+					status = http.StatusConflict
+					msg = "customer already exists"
+				default:
+					if strings.Contains(strings.ToLower(err.Error()), "password") || strings.Contains(strings.ToLower(err.Error()), "email") {
+						status = http.StatusBadRequest
+						msg = err.Error()
+					}
+				}
+				c.JSON(status, gin.H{"error": msg})
+				return
+			}
+
+			c.JSON(http.StatusCreated, customerResponse{Customer: toCTCustomer(*customer)})
+		})
+		group.GET("/me", func(c *gin.Context) {
+			project := mustProject(c)
+			authHeader := c.GetHeader("Authorization")
+			if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+				return
+			}
+			token := strings.TrimSpace(authHeader[len("Bearer "):])
+			customer, err := deps.CustomerSvc.LookupByToken(c.Request.Context(), project.ID, token)
+			if err != nil {
+				status := http.StatusUnauthorized
+				msg := "invalid token"
+				if !errors.Is(err, customersvc.ErrInvalidToken) {
+					status = http.StatusInternalServerError
+					msg = "failed to resolve customer"
+				}
+				c.JSON(status, gin.H{"error": msg})
+				return
+			}
+			c.JSON(http.StatusOK, toCTCustomer(*customer))
+		})
 		group.GET("/products", func(c *gin.Context) {
 			project := mustProject(c)
 			products, err := deps.ProductSvc.List(c.Request.Context(), project.ID)
@@ -175,6 +260,46 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 	// commercetools-style prefix: /{projectKey}/...
 	ctStyle := router.Group("/:projectKey", projectMiddleware(logger, deps.ProjectRepo))
 	registerProjectRoutes(ctStyle)
+
+	oauth := router.Group("/oauth/:projectKey", projectMiddleware(logger, deps.ProjectRepo))
+	oauth.POST("/customers/token", func(c *gin.Context) {
+		project := mustProject(c)
+
+		var req tokenRequest
+		if err := c.ShouldBind(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token request"})
+			return
+		}
+		if strings.ToLower(req.GrantType) != "password" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported grant_type"})
+			return
+		}
+		if !strings.Contains(req.Scope, "manage_project:"+project.Key) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid scope"})
+			return
+		}
+
+		customer, accessToken, refreshToken, err := deps.CustomerSvc.Login(c.Request.Context(), project.ID, req.Username, req.Password)
+		if err != nil {
+			status := http.StatusUnauthorized
+			msg := "invalid credentials"
+			if err != customersvc.ErrInvalidCredentials {
+				status = http.StatusInternalServerError
+				msg = "token issuance failed"
+			}
+			c.JSON(status, gin.H{"error": msg})
+			return
+		}
+
+		scope := "manage_project:" + project.Key + " customer_id:" + customer.ID
+		c.JSON(http.StatusOK, gin.H{
+			"access_token":  accessToken,
+			"expires_in":    deps.CustomerSvc.AccessTTLSeconds(),
+			"token_type":    "Bearer",
+			"scope":         scope,
+			"refresh_token": refreshToken,
+		})
+	})
 
 	return router, nil
 }

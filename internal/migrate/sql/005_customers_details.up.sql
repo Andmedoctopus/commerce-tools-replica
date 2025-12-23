@@ -1,0 +1,9 @@
+ALTER TABLE customers
+    ADD COLUMN IF NOT EXISTS first_name TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS last_name TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS date_of_birth TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS addresses JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS default_shipping_address_id TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS default_billing_address_id TEXT NOT NULL DEFAULT '',
+    ADD COLUMN IF NOT EXISTS shipping_address_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+    ADD COLUMN IF NOT EXISTS billing_address_ids JSONB NOT NULL DEFAULT '[]'::jsonb;

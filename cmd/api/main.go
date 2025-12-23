@@ -14,10 +14,12 @@ import (
 	"commercetools-replica/internal/httpserver"
 	cartrepo "commercetools-replica/internal/repository/cart"
 	categoryrepo "commercetools-replica/internal/repository/category"
+	customerrepo "commercetools-replica/internal/repository/customer"
 	productrepo "commercetools-replica/internal/repository/product"
 	projectrepo "commercetools-replica/internal/repository/project"
 	cartsvc "commercetools-replica/internal/service/cart"
 	categorysvc "commercetools-replica/internal/service/category"
+	customersvc "commercetools-replica/internal/service/customer"
 	productsvc "commercetools-replica/internal/service/product"
 )
 
@@ -39,12 +41,15 @@ func main() {
 	cartService := cartsvc.New(cartRepo)
 	categoryRepo := categoryrepo.NewPostgres(dbpool)
 	categoryService := categorysvc.New(categoryRepo)
+	customerRepo := customerrepo.NewPostgres(dbpool, logger)
+	customerService := customersvc.New(customerRepo)
 
 	srv, err := httpserver.New(cfg.HTTPAddr, logger, dbpool, httpserver.Deps{
 		ProjectRepo: projectRepo,
 		ProductSvc:  productService,
 		CartSvc:     cartService,
 		CategorySvc: categoryService,
+		CustomerSvc: customerService,
 	})
 	if err != nil {
 		logger.Fatalf("init server: %v", err)
