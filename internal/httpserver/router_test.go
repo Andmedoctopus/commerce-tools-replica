@@ -118,6 +118,19 @@ func TestProjectMiddleware_MissingKey(t *testing.T) {
 	}
 }
 
+func TestBuildRouter_RequiresDependencies(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	deps := Deps{}
+	if _, err := buildRouter(logDiscard(), nil, deps); err == nil {
+		t.Fatalf("expected error for missing deps")
+	}
+	// missing ProductSvc
+	deps.ProjectRepo = &stubProjectRepo{project: &domain.Project{ID: "id", Key: "key"}}
+	if _, err := buildRouter(logDiscard(), nil, deps); err == nil {
+		t.Fatalf("expected error for missing product service")
+	}
+}
+
 type stubProductService struct {
 	listResult []domain.Product
 	getResult  *domain.Product
