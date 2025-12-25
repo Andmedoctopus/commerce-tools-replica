@@ -25,6 +25,7 @@ type productService interface {
 type cartService interface {
 	Create(ctx context.Context, projectID string, in cartsvc.CreateInput) (*domain.Cart, error)
 	Get(ctx context.Context, projectID, id string) (*domain.Cart, error)
+	GetActive(ctx context.Context, projectID, customerID string) (*domain.Cart, error)
 }
 
 type categoryService interface {
@@ -155,6 +156,45 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 				return
 			}
 			c.JSON(http.StatusOK, toCTCustomer(*customer))
+		})
+		group.POST("/me/login", func(c *gin.Context) {
+			project := mustProject(c)
+
+			var req loginRequest
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid login request"})
+				return
+			}
+
+			customer, _, _, err := deps.CustomerSvc.Login(c.Request.Context(), project.ID, req.Email, req.Password)
+			if err != nil {
+				status := http.StatusUnauthorized
+				msg := "invalid credentials"
+				if err != customersvc.ErrInvalidCredentials {
+					status = http.StatusInternalServerError
+					msg = "login failed"
+				}
+				c.JSON(status, gin.H{"error": msg})
+				return
+			}
+
+			var cartResp *ctCart
+			cart, err := deps.CartSvc.GetActive(c.Request.Context(), project.ID, customer.ID)
+			if err != nil {
+				if !errors.Is(err, domain.ErrNotFound) {
+					logger.Printf("login cart lookup error project_id=%s customer_id=%s error=%v", project.ID, customer.ID, err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "login failed"})
+					return
+				}
+			} else {
+				ct := toCTCart(*cart, customer)
+				cartResp = &ct
+			}
+
+			c.JSON(http.StatusOK, loginResponse{
+				Customer: toCTCustomer(*customer),
+				Cart:     cartResp,
+			})
 		})
 		group.GET("/products", func(c *gin.Context) {
 			project := mustProject(c)

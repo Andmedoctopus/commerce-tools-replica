@@ -49,9 +49,24 @@ SELECT id::text, project_id::text, customer_id::text, currency, total_cents, sta
 FROM carts
 WHERE project_id = $1 AND id = $2
 `
+	return r.fetchCart(ctx, cartQuery, projectID, id)
+}
+
+func (r *postgresRepo) GetActiveByCustomer(ctx context.Context, projectID, customerID string) (*domain.Cart, error) {
+	const cartQuery = `
+SELECT id::text, project_id::text, customer_id::text, currency, total_cents, state, created_at
+FROM carts
+WHERE project_id = $1 AND customer_id = $2 AND state = 'active'
+ORDER BY created_at DESC
+LIMIT 1
+`
+	return r.fetchCart(ctx, cartQuery, projectID, customerID)
+}
+
+func (r *postgresRepo) fetchCart(ctx context.Context, cartQuery string, args ...interface{}) (*domain.Cart, error) {
 	var cart domain.Cart
 	var customerID *string
-	err := r.pool.QueryRow(ctx, cartQuery, projectID, id).Scan(
+	err := r.pool.QueryRow(ctx, cartQuery, args...).Scan(
 		&cart.ID,
 		&cart.ProjectID,
 		&customerID,

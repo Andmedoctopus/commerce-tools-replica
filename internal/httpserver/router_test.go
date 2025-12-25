@@ -155,6 +155,10 @@ func (s *stubCartService) Get(_ context.Context, _ string, _ string) (*domain.Ca
 	return nil, nil
 }
 
+func (s *stubCartService) GetActive(_ context.Context, _ string, _ string) (*domain.Cart, error) {
+	return nil, nil
+}
+
 type stubCategoryService struct {
 	list []domain.Category
 	err  error

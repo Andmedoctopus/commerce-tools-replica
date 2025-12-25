@@ -35,6 +35,23 @@ func (s *stubCustomerAuthSvc) AccessTTLSeconds() int {
 	return 3600
 }
 
+type stubLoginCartService struct {
+	cart *domain.Cart
+	err  error
+}
+
+func (s *stubLoginCartService) Create(_ context.Context, _ string, _ cartsvc.CreateInput) (*domain.Cart, error) {
+	return nil, nil
+}
+
+func (s *stubLoginCartService) Get(_ context.Context, _ string, _ string) (*domain.Cart, error) {
+	return nil, nil
+}
+
+func (s *stubLoginCartService) GetActive(_ context.Context, _ string, _ string) (*domain.Cart, error) {
+	return s.cart, s.err
+}
+
 func TestSignupHandler_Created(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	proj := &domain.Project{ID: "proj-id", Key: "proj-key"}
@@ -153,5 +170,98 @@ func TestMeHandler_Success(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), `"email":"me@example.com"`) {
 		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestLoginHandler_Success(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	proj := &domain.Project{ID: "proj-id", Key: "proj-key"}
+	projectRepo := &stubProjectRepo{project: proj}
+	authSvc := &stubCustomerAuthSvc{
+		customer: &domain.Customer{ID: "cust-id", ProjectID: proj.ID, Email: "user@example.com"},
+	}
+	cartSvc := &stubLoginCartService{err: domain.ErrNotFound}
+	router, err := buildRouter(logDiscard(), nil, Deps{
+		ProjectRepo: projectRepo,
+		ProductSvc:  &stubProductService{},
+		CartSvc:     cartSvc,
+		CategorySvc: &stubCategoryService{},
+		CustomerSvc: authSvc,
+	})
+	if err != nil {
+		t.Fatalf("build router: %v", err)
+	}
+
+	body := `{"email":"user@example.com","password":"secret"}`
+	req := httptest.NewRequest(http.MethodPost, "/proj-key/me/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d body=%s", rec.Code, rec.Body.String())
+	}
+	if !strings.Contains(rec.Body.String(), `"customer"`) {
+		t.Fatalf("unexpected body: %s", rec.Body.String())
+	}
+}
+
+func TestLoginHandler_InvalidBody(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	proj := &domain.Project{ID: "proj-id", Key: "proj-key"}
+	projectRepo := &stubProjectRepo{project: proj}
+	authSvc := &stubCustomerAuthSvc{}
+	cartSvc := &stubLoginCartService{}
+	router, err := buildRouter(logDiscard(), nil, Deps{
+		ProjectRepo: projectRepo,
+		ProductSvc:  &stubProductService{},
+		CartSvc:     cartSvc,
+		CategorySvc: &stubCategoryService{},
+		CustomerSvc: authSvc,
+	})
+	if err != nil {
+		t.Fatalf("build router: %v", err)
+	}
+
+	req := httptest.NewRequest(http.MethodPost, "/proj-key/me/login", strings.NewReader("{"))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("expected 400, got %d body=%s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestLoginHandler_InvalidCredentials(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	proj := &domain.Project{ID: "proj-id", Key: "proj-key"}
+	projectRepo := &stubProjectRepo{project: proj}
+	authSvc := &stubCustomerAuthSvc{
+		loginErr: customersvc.ErrInvalidCredentials,
+	}
+	cartSvc := &stubLoginCartService{}
+	router, err := buildRouter(logDiscard(), nil, Deps{
+		ProjectRepo: projectRepo,
+		ProductSvc:  &stubProductService{},
+		CartSvc:     cartSvc,
+		CategorySvc: &stubCategoryService{},
+		CustomerSvc: authSvc,
+	})
+	if err != nil {
+		t.Fatalf("build router: %v", err)
+	}
+
+	body := `{"email":"user@example.com","password":"bad"}`
+	req := httptest.NewRequest(http.MethodPost, "/proj-key/me/login", strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+
+	router.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusUnauthorized {
+		t.Fatalf("expected 401, got %d body=%s", rec.Code, rec.Body.String())
 	}
 }

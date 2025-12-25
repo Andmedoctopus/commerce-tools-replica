@@ -18,6 +18,11 @@ type signupRequest struct {
 	DefaultBillingAddress  *int             `json:"defaultBillingAddress"`
 }
 
+type loginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
 type addressRequest struct {
 	FirstName  string `json:"firstName"`
 	LastName   string `json:"lastName"`
@@ -38,6 +43,11 @@ type tokenRequest struct {
 
 type customerResponse struct {
 	Customer ctCustomer `json:"customer"`
+}
+
+type loginResponse struct {
+	Customer ctCustomer `json:"customer"`
+	Cart     *ctCart    `json:"cart,omitempty"`
 }
 
 type ctCustomer struct {

@@ -22,6 +22,10 @@ func (s *stubRepo) GetByID(_ context.Context, _, _ string) (*domain.Cart, error)
 	return nil, nil
 }
 
+func (s *stubRepo) GetActiveByCustomer(_ context.Context, _, _ string) (*domain.Cart, error) {
+	return nil, nil
+}
+
 func TestServiceCreateValidation(t *testing.T) {
 	svc := &Service{repo: &stubRepo{}}
 	_, err := svc.Create(context.Background(), "proj", CreateInput{Currency: "   "})

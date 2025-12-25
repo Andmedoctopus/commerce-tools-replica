@@ -16,6 +16,7 @@ type Service struct {
 type cartRepo interface {
 	Create(ctx context.Context, in cartrepo.CreateCartInput) (*domain.Cart, error)
 	GetByID(ctx context.Context, projectID, id string) (*domain.Cart, error)
+	GetActiveByCustomer(ctx context.Context, projectID, customerID string) (*domain.Cart, error)
 }
 
 func New(repo cartrepo.Repository) *Service {
@@ -40,4 +41,8 @@ func (s *Service) Create(ctx context.Context, projectID string, in CreateInput) 
 
 func (s *Service) Get(ctx context.Context, projectID, id string) (*domain.Cart, error) {
 	return s.repo.GetByID(ctx, projectID, id)
+}
+
+func (s *Service) GetActive(ctx context.Context, projectID, customerID string) (*domain.Cart, error) {
+	return s.repo.GetActiveByCustomer(ctx, projectID, customerID)
 }
