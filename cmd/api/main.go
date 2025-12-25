@@ -38,7 +38,7 @@ func main() {
 	productRepo := productrepo.NewPostgres(dbpool, logger)
 	productService := productsvc.New(productRepo)
 	cartRepo := cartrepo.NewPostgres(dbpool)
-	cartService := cartsvc.New(cartRepo)
+	cartService := cartsvc.New(cartRepo, productRepo)
 	categoryRepo := categoryrepo.NewPostgres(dbpool)
 	categoryService := categorysvc.New(categoryRepo)
 	customerRepo := customerrepo.NewPostgres(dbpool, logger)

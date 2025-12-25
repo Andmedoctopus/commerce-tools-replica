@@ -63,6 +63,101 @@ LIMIT 1
 	return r.fetchCart(ctx, cartQuery, projectID, customerID)
 }
 
+func (r *postgresRepo) AddLineItem(ctx context.Context, cartID string, product domain.Product, quantity int, snapshot map[string]interface{}) error {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var lineID string
+	var existingQty int
+	var unitPrice int64
+	err = tx.QueryRow(ctx, `
+SELECT id::text, quantity, unit_price_cents
+FROM cart_lines
+WHERE cart_id = $1 AND product_id = $2
+`, cartID, product.ID).Scan(&lineID, &existingQty, &unitPrice)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+
+	if err == nil {
+		newQty := existingQty + quantity
+		newTotal := unitPrice * int64(newQty)
+		if _, err := tx.Exec(ctx, `
+UPDATE cart_lines
+SET quantity = $1, total_cents = $2
+WHERE id = $3
+`, newQty, newTotal, lineID); err != nil {
+			return err
+		}
+	} else {
+		unitPrice = product.PriceCents
+		total := unitPrice * int64(quantity)
+		if _, err := tx.Exec(ctx, `
+INSERT INTO cart_lines (cart_id, product_id, quantity, unit_price_cents, total_cents, snapshot)
+VALUES ($1, $2, $3, $4, $5, $6)
+`, cartID, product.ID, quantity, unitPrice, total, snapshot); err != nil {
+			return err
+		}
+	}
+
+	if err := updateCartTotal(ctx, tx, cartID); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (r *postgresRepo) ChangeLineItemQuantity(ctx context.Context, cartID, lineItemID string, quantity int) error {
+	tx, err := r.pool.BeginTx(ctx, pgx.TxOptions{})
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	if quantity <= 0 {
+		cmd, err := tx.Exec(ctx, `
+DELETE FROM cart_lines
+WHERE id = $1 AND cart_id = $2
+`, lineItemID, cartID)
+		if err != nil {
+			return err
+		}
+		if cmd.RowsAffected() == 0 {
+			return domain.ErrNotFound
+		}
+	} else {
+		var unitPrice int64
+		err := tx.QueryRow(ctx, `
+SELECT unit_price_cents
+FROM cart_lines
+WHERE id = $1 AND cart_id = $2
+`, lineItemID, cartID).Scan(&unitPrice)
+		if err != nil {
+			if errors.Is(err, pgx.ErrNoRows) {
+				return domain.ErrNotFound
+			}
+			return err
+		}
+		total := unitPrice * int64(quantity)
+		if _, err := tx.Exec(ctx, `
+UPDATE cart_lines
+SET quantity = $1, total_cents = $2
+WHERE id = $3 AND cart_id = $4
+`, quantity, total, lineItemID, cartID); err != nil {
+			return err
+		}
+	}
+
+	if err := updateCartTotal(ctx, tx, cartID); err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
 func (r *postgresRepo) fetchCart(ctx context.Context, cartQuery string, args ...interface{}) (*domain.Cart, error) {
 	var cart domain.Cart
 	var customerID *string
@@ -116,4 +211,17 @@ ORDER BY created_at ASC
 	}
 
 	return &cart, nil
+}
+
+func updateCartTotal(ctx context.Context, tx pgx.Tx, cartID string) error {
+	_, err := tx.Exec(ctx, `
+UPDATE carts
+SET total_cents = COALESCE((
+	SELECT SUM(total_cents)
+	FROM cart_lines
+	WHERE cart_id = $1
+), 0)
+WHERE id = $1
+`, cartID)
+	return err
 }

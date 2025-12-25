@@ -159,6 +159,10 @@ func (s *stubCartService) GetActive(_ context.Context, _ string, _ string) (*dom
 	return nil, nil
 }
 
+func (s *stubCartService) Update(_ context.Context, _ string, _ string, _ string, _ cartsvc.UpdateInput) (*domain.Cart, error) {
+	return nil, nil
+}
+
 type stubCategoryService struct {
 	list []domain.Category
 	err  error

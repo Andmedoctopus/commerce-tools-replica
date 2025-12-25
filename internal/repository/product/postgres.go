@@ -74,6 +74,26 @@ WHERE project_id = $1 AND id = $2
 	return &p, nil
 }
 
+func (r *postgresRepo) GetBySKU(ctx context.Context, projectID, sku string) (*domain.Product, error) {
+	const q = `
+SELECT id::text, project_id::text, key, sku, name, COALESCE(description, ''), price_cents, currency, attributes, created_at
+FROM products
+WHERE project_id = $1 AND sku = $2
+`
+	var p domain.Product
+	err := r.pool.QueryRow(ctx, q, projectID, sku).Scan(&p.ID, &p.ProjectID, &p.Key, &p.SKU, &p.Name, &p.Description, &p.PriceCents, &p.Currency, &p.Attributes, &p.CreatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			r.logger.Printf("product repo: get by sku project_id=%s sku=%s not found", projectID, sku)
+			return nil, domain.ErrNotFound
+		}
+		r.logger.Printf("product repo: get by sku project_id=%s sku=%s error=%v", projectID, sku, err)
+		return nil, err
+	}
+	r.logger.Printf("product repo: get by sku project_id=%s sku=%s id=%s key=%s", projectID, sku, p.ID, p.Key)
+	return &p, nil
+}
+
 func (r *postgresRepo) Upsert(ctx context.Context, product domain.Product) (*domain.Product, error) {
 	const q = `
 INSERT INTO products (id, project_id, key, sku, name, description, price_cents, currency, attributes)

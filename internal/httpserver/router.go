@@ -26,6 +26,7 @@ type cartService interface {
 	Create(ctx context.Context, projectID string, in cartsvc.CreateInput) (*domain.Cart, error)
 	Get(ctx context.Context, projectID, id string) (*domain.Cart, error)
 	GetActive(ctx context.Context, projectID, customerID string) (*domain.Cart, error)
+	Update(ctx context.Context, projectID, customerID, cartID string, in cartsvc.UpdateInput) (*domain.Cart, error)
 }
 
 type categoryService interface {
@@ -138,21 +139,8 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 		})
 		group.GET("/me", func(c *gin.Context) {
 			project := mustProject(c)
-			authHeader := c.GetHeader("Authorization")
-			if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
-				return
-			}
-			token := strings.TrimSpace(authHeader[len("Bearer "):])
-			customer, err := deps.CustomerSvc.LookupByToken(c.Request.Context(), project.ID, token)
-			if err != nil {
-				status := http.StatusUnauthorized
-				msg := "invalid token"
-				if !errors.Is(err, customersvc.ErrInvalidToken) {
-					status = http.StatusInternalServerError
-					msg = "failed to resolve customer"
-				}
-				c.JSON(status, gin.H{"error": msg})
+			customer, ok := authorizeCustomer(c, project, deps.CustomerSvc)
+			if !ok {
 				return
 			}
 			c.JSON(http.StatusOK, toCTCustomer(*customer))
@@ -278,6 +266,67 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 				return
 			}
 			c.JSON(http.StatusCreated, cart)
+		})
+		group.POST("/me/carts", func(c *gin.Context) {
+			project := mustProject(c)
+			customer, ok := authorizeCustomer(c, project, deps.CustomerSvc)
+			if !ok {
+				return
+			}
+			var req cartsvc.CreateInput
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+				return
+			}
+			req.CustomerID = &customer.ID
+			cart, err := deps.CartSvc.Create(c.Request.Context(), project.ID, req)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusCreated, toCTCart(*cart, customer))
+		})
+		group.POST("/me/carts/:id", func(c *gin.Context) {
+			project := mustProject(c)
+			customer, ok := authorizeCustomer(c, project, deps.CustomerSvc)
+			if !ok {
+				return
+			}
+			id := c.Param("id")
+			var req cartsvc.UpdateInput
+			if err := c.ShouldBindJSON(&req); err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
+				return
+			}
+			cart, err := deps.CartSvc.Update(c.Request.Context(), project.ID, customer.ID, id, req)
+			if err != nil {
+				if errors.Is(err, domain.ErrNotFound) {
+					c.JSON(http.StatusNotFound, gin.H{"error": "cart not found"})
+					return
+				}
+				logger.Printf("cart update error project_id=%s cart_id=%s error=%v", project.ID, id, err)
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, toCTCart(*cart, customer))
+		})
+		group.GET("/me/active-cart", func(c *gin.Context) {
+			project := mustProject(c)
+			customer, ok := authorizeCustomer(c, project, deps.CustomerSvc)
+			if !ok {
+				return
+			}
+			cart, err := deps.CartSvc.GetActive(c.Request.Context(), project.ID, customer.ID)
+			if err != nil {
+				if errors.Is(err, domain.ErrNotFound) {
+					c.JSON(http.StatusNotFound, gin.H{"error": "cart not found"})
+					return
+				}
+				logger.Printf("active cart error project_id=%s customer_id=%s error=%v", project.ID, customer.ID, err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "get active cart failed"})
+				return
+			}
+			c.JSON(http.StatusOK, toCTCart(*cart, customer))
 		})
 		group.GET("/carts/:id", func(c *gin.Context) {
 			project := mustProject(c)
@@ -422,4 +471,25 @@ func mustProject(c *gin.Context) *domain.Project {
 		panic("project missing in context")
 	}
 	return p
+}
+
+func authorizeCustomer(c *gin.Context, project *domain.Project, svc customerService) (*domain.Customer, bool) {
+	authHeader := c.GetHeader("Authorization")
+	if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+		return nil, false
+	}
+	token := strings.TrimSpace(authHeader[len("Bearer "):])
+	customer, err := svc.LookupByToken(c.Request.Context(), project.ID, token)
+	if err != nil {
+		status := http.StatusUnauthorized
+		msg := "invalid token"
+		if !errors.Is(err, customersvc.ErrInvalidToken) {
+			status = http.StatusInternalServerError
+			msg = "failed to resolve customer"
+		}
+		c.JSON(status, gin.H{"error": msg})
+		return nil, false
+	}
+	return customer, true
 }

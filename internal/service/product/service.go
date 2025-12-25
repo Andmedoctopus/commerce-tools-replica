@@ -22,3 +22,7 @@ func (s *Service) List(ctx context.Context, projectID string) ([]domain.Product,
 func (s *Service) Get(ctx context.Context, projectID, id string) (*domain.Product, error) {
 	return s.repo.GetByID(ctx, projectID, id)
 }
+
+func (s *Service) GetBySKU(ctx context.Context, projectID, sku string) (*domain.Product, error) {
+	return s.repo.GetBySKU(ctx, projectID, sku)
+}
