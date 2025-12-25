@@ -10,6 +10,7 @@ import (
 
 	"commercetools-replica/internal/domain"
 	projectrepo "commercetools-replica/internal/repository/project"
+	anonymoussvc "commercetools-replica/internal/service/anonymous"
 	cartsvc "commercetools-replica/internal/service/cart"
 	customersvc "commercetools-replica/internal/service/customer"
 	"github.com/gin-contrib/cors"
@@ -27,6 +28,9 @@ type cartService interface {
 	Get(ctx context.Context, projectID, id string) (*domain.Cart, error)
 	GetActive(ctx context.Context, projectID, customerID string) (*domain.Cart, error)
 	Update(ctx context.Context, projectID, customerID, cartID string, in cartsvc.UpdateInput) (*domain.Cart, error)
+	GetActiveAnonymous(ctx context.Context, projectID, anonymousID string) (*domain.Cart, error)
+	UpdateAnonymous(ctx context.Context, projectID, anonymousID, cartID string, in cartsvc.UpdateInput) (*domain.Cart, error)
+	AssignCustomerFromAnonymous(ctx context.Context, projectID, anonymousID, customerID string) (*domain.Cart, error)
 }
 
 type categoryService interface {
@@ -41,12 +45,19 @@ type customerService interface {
 	AccessTTLSeconds() int
 }
 
+type anonymousService interface {
+	Issue(ctx context.Context, projectID string) (string, string, string, error)
+	LookupByToken(ctx context.Context, projectID, token string) (string, error)
+	AccessTTLSeconds() int
+}
+
 type Deps struct {
-	ProjectRepo projectrepo.Repository
-	ProductSvc  productService
-	CartSvc     cartService
-	CategorySvc categoryService
-	CustomerSvc customerService
+	ProjectRepo  projectrepo.Repository
+	ProductSvc   productService
+	CartSvc      cartService
+	CategorySvc  categoryService
+	CustomerSvc  customerService
+	AnonymousSvc anonymousService
 }
 
 func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, error) {
@@ -64,6 +75,9 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 	}
 	if deps.CustomerSvc == nil {
 		return nil, errors.New("CustomerSvc is required")
+	}
+	if deps.AnonymousSvc == nil {
+		return nil, errors.New("AnonymousSvc is required")
 	}
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
@@ -133,6 +147,17 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 				}
 				c.JSON(status, gin.H{"error": msg})
 				return
+			}
+
+			if authHeader := c.GetHeader("Authorization"); authHeader != "" {
+				token := extractBearerToken(authHeader)
+				if token != "" {
+					if anonymousID, err := deps.AnonymousSvc.LookupByToken(c.Request.Context(), project.ID, token); err == nil {
+						if _, err := deps.CartSvc.AssignCustomerFromAnonymous(c.Request.Context(), project.ID, anonymousID, customer.ID); err != nil && !errors.Is(err, domain.ErrNotFound) {
+							logger.Printf("signup cart transfer error project_id=%s customer_id=%s error=%v", project.ID, customer.ID, err)
+						}
+					}
+				}
 			}
 
 			c.JSON(http.StatusCreated, customerResponse{Customer: toCTCustomer(*customer)})
@@ -269,7 +294,7 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 		})
 		group.POST("/me/carts", func(c *gin.Context) {
 			project := mustProject(c)
-			customer, ok := authorizeCustomer(c, project, deps.CustomerSvc)
+			actor, ok := authorizeActor(c, project, deps.CustomerSvc, deps.AnonymousSvc)
 			if !ok {
 				return
 			}
@@ -278,17 +303,21 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 				return
 			}
-			req.CustomerID = &customer.ID
+			if actor.Customer != nil {
+				req.CustomerID = &actor.Customer.ID
+			} else if actor.AnonymousID != "" {
+				req.AnonymousID = &actor.AnonymousID
+			}
 			cart, err := deps.CartSvc.Create(c.Request.Context(), project.ID, req)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-			c.JSON(http.StatusCreated, toCTCart(*cart, customer))
+			c.JSON(http.StatusCreated, toCTCart(*cart, actor.Customer))
 		})
 		group.POST("/me/carts/:id", func(c *gin.Context) {
 			project := mustProject(c)
-			customer, ok := authorizeCustomer(c, project, deps.CustomerSvc)
+			actor, ok := authorizeActor(c, project, deps.CustomerSvc, deps.AnonymousSvc)
 			if !ok {
 				return
 			}
@@ -298,7 +327,13 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid request body"})
 				return
 			}
-			cart, err := deps.CartSvc.Update(c.Request.Context(), project.ID, customer.ID, id, req)
+			var cart *domain.Cart
+			var err error
+			if actor.Customer != nil {
+				cart, err = deps.CartSvc.Update(c.Request.Context(), project.ID, actor.Customer.ID, id, req)
+			} else {
+				cart, err = deps.CartSvc.UpdateAnonymous(c.Request.Context(), project.ID, actor.AnonymousID, id, req)
+			}
 			if err != nil {
 				if errors.Is(err, domain.ErrNotFound) {
 					c.JSON(http.StatusNotFound, gin.H{"error": "cart not found"})
@@ -308,25 +343,31 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-			c.JSON(http.StatusOK, toCTCart(*cart, customer))
+			c.JSON(http.StatusOK, toCTCart(*cart, actor.Customer))
 		})
 		group.GET("/me/active-cart", func(c *gin.Context) {
 			project := mustProject(c)
-			customer, ok := authorizeCustomer(c, project, deps.CustomerSvc)
+			actor, ok := authorizeActor(c, project, deps.CustomerSvc, deps.AnonymousSvc)
 			if !ok {
 				return
 			}
-			cart, err := deps.CartSvc.GetActive(c.Request.Context(), project.ID, customer.ID)
+			var cart *domain.Cart
+			var err error
+			if actor.Customer != nil {
+				cart, err = deps.CartSvc.GetActive(c.Request.Context(), project.ID, actor.Customer.ID)
+			} else {
+				cart, err = deps.CartSvc.GetActiveAnonymous(c.Request.Context(), project.ID, actor.AnonymousID)
+			}
 			if err != nil {
 				if errors.Is(err, domain.ErrNotFound) {
 					c.JSON(http.StatusNotFound, gin.H{"error": "cart not found"})
 					return
 				}
-				logger.Printf("active cart error project_id=%s customer_id=%s error=%v", project.ID, customer.ID, err)
+				logger.Printf("active cart error project_id=%s error=%v", project.ID, err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "get active cart failed"})
 				return
 			}
-			c.JSON(http.StatusOK, toCTCart(*cart, customer))
+			c.JSON(http.StatusOK, toCTCart(*cart, actor.Customer))
 		})
 		group.GET("/carts/:id", func(c *gin.Context) {
 			project := mustProject(c)
@@ -387,6 +428,48 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 			"token_type":    "Bearer",
 			"scope":         scope,
 			"refresh_token": refreshToken,
+		})
+	})
+	oauth.POST("/anonymous/token", func(c *gin.Context) {
+		project := mustProject(c)
+
+		var req anonymousTokenRequest
+		if err := c.ShouldBind(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid token request"})
+			return
+		}
+		if strings.ToLower(req.GrantType) != "client_credentials" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unsupported grant_type"})
+			return
+		}
+		if !strings.Contains(req.Scope, "manage_project:"+project.Key) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid scope"})
+			return
+		}
+
+		accessToken, refreshToken, anonymousID, err := deps.AnonymousSvc.Issue(c.Request.Context(), project.ID)
+		if err != nil {
+			logger.Printf("anonymous token error project_id=%s error=%v", project.ID, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "token issuance failed"})
+			return
+		}
+
+		scope := "manage_project:" + project.Key + " anonymous_id:" + anonymousID
+		c.JSON(http.StatusOK, gin.H{
+			"access_token":  accessToken,
+			"expires_in":    deps.AnonymousSvc.AccessTTLSeconds(),
+			"token_type":    "Bearer",
+			"scope":         scope,
+			"refresh_token": refreshToken,
+		})
+	})
+
+	router.POST("/oauth/token", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{
+			"access_token": "NOT_IMPLEMENTED",
+			"expires_in":   172800,
+			"token_type":   "Bearer",
+			"scope":        "manage_project:petal_pot",
 		})
 	})
 
@@ -475,11 +558,11 @@ func mustProject(c *gin.Context) *domain.Project {
 
 func authorizeCustomer(c *gin.Context, project *domain.Project, svc customerService) (*domain.Customer, bool) {
 	authHeader := c.GetHeader("Authorization")
-	if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+	token := extractBearerToken(authHeader)
+	if token == "" {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
 		return nil, false
 	}
-	token := strings.TrimSpace(authHeader[len("Bearer "):])
 	customer, err := svc.LookupByToken(c.Request.Context(), project.ID, token)
 	if err != nil {
 		status := http.StatusUnauthorized
@@ -492,4 +575,45 @@ func authorizeCustomer(c *gin.Context, project *domain.Project, svc customerServ
 		return nil, false
 	}
 	return customer, true
+}
+
+type authActor struct {
+	Customer    *domain.Customer
+	AnonymousID string
+}
+
+func authorizeActor(c *gin.Context, project *domain.Project, custSvc customerService, anonSvc anonymousService) (*authActor, bool) {
+	authHeader := c.GetHeader("Authorization")
+	token := extractBearerToken(authHeader)
+	if token == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
+		return nil, false
+	}
+	customer, err := custSvc.LookupByToken(c.Request.Context(), project.ID, token)
+	if err == nil {
+		return &authActor{Customer: customer}, true
+	}
+	if !errors.Is(err, customersvc.ErrInvalidToken) {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve customer"})
+		return nil, false
+	}
+
+	anonymousID, err := anonSvc.LookupByToken(c.Request.Context(), project.ID, token)
+	if err == nil {
+		return &authActor{AnonymousID: anonymousID}, true
+	}
+	if !errors.Is(err, anonymoussvc.ErrInvalidToken) {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "failed to resolve anonymous token"})
+		return nil, false
+	}
+
+	c.JSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+	return nil, false
+}
+
+func extractBearerToken(authHeader string) string {
+	if !strings.HasPrefix(strings.ToLower(authHeader), "bearer ") {
+		return ""
+	}
+	return strings.TrimSpace(authHeader[len("Bearer "):])
 }

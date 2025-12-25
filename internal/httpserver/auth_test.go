@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"commercetools-replica/internal/domain"
+	cartsvc "commercetools-replica/internal/service/cart"
 	customersvc "commercetools-replica/internal/service/customer"
 	"github.com/gin-gonic/gin"
 )
@@ -52,6 +53,22 @@ func (s *stubLoginCartService) GetActive(_ context.Context, _ string, _ string) 
 	return s.cart, s.err
 }
 
+func (s *stubLoginCartService) Update(_ context.Context, _ string, _ string, _ string, _ cartsvc.UpdateInput) (*domain.Cart, error) {
+	return nil, nil
+}
+
+func (s *stubLoginCartService) GetActiveAnonymous(_ context.Context, _ string, _ string) (*domain.Cart, error) {
+	return nil, nil
+}
+
+func (s *stubLoginCartService) UpdateAnonymous(_ context.Context, _ string, _ string, _ string, _ cartsvc.UpdateInput) (*domain.Cart, error) {
+	return nil, nil
+}
+
+func (s *stubLoginCartService) AssignCustomerFromAnonymous(_ context.Context, _ string, _ string, _ string) (*domain.Cart, error) {
+	return nil, nil
+}
+
 func TestSignupHandler_Created(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	proj := &domain.Project{ID: "proj-id", Key: "proj-key"}
@@ -60,11 +77,12 @@ func TestSignupHandler_Created(t *testing.T) {
 		customer: &domain.Customer{ID: "cust-id", ProjectID: proj.ID, Email: "user@example.com"},
 	}
 	router, err := buildRouter(logDiscard(), nil, Deps{
-		ProjectRepo: projectRepo,
-		ProductSvc:  &stubProductService{},
-		CartSvc:     &stubCartService{},
-		CategorySvc: &stubCategoryService{},
-		CustomerSvc: authSvc,
+		ProjectRepo:  projectRepo,
+		ProductSvc:   &stubProductService{},
+		CartSvc:      &stubCartService{},
+		CategorySvc:  &stubCategoryService{},
+		CustomerSvc:  authSvc,
+		AnonymousSvc: &stubAnonymousService{},
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -93,11 +111,12 @@ func TestTokenHandler_InvalidCredentials(t *testing.T) {
 		loginErr: customersvc.ErrInvalidCredentials,
 	}
 	router, err := buildRouter(logDiscard(), nil, Deps{
-		ProjectRepo: projectRepo,
-		ProductSvc:  &stubProductService{},
-		CartSvc:     &stubCartService{},
-		CategorySvc: &stubCategoryService{},
-		CustomerSvc: authSvc,
+		ProjectRepo:  projectRepo,
+		ProductSvc:   &stubProductService{},
+		CartSvc:      &stubCartService{},
+		CategorySvc:  &stubCategoryService{},
+		CustomerSvc:  authSvc,
+		AnonymousSvc: &stubAnonymousService{},
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -121,11 +140,12 @@ func TestMeHandler_UnauthorizedWithoutToken(t *testing.T) {
 	projectRepo := &stubProjectRepo{project: proj}
 	authSvc := &stubCustomerAuthSvc{}
 	router, err := buildRouter(logDiscard(), nil, Deps{
-		ProjectRepo: projectRepo,
-		ProductSvc:  &stubProductService{},
-		CartSvc:     &stubCartService{},
-		CategorySvc: &stubCategoryService{},
-		CustomerSvc: authSvc,
+		ProjectRepo:  projectRepo,
+		ProductSvc:   &stubProductService{},
+		CartSvc:      &stubCartService{},
+		CategorySvc:  &stubCategoryService{},
+		CustomerSvc:  authSvc,
+		AnonymousSvc: &stubAnonymousService{},
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -149,11 +169,12 @@ func TestMeHandler_Success(t *testing.T) {
 		customer: &domain.Customer{ID: "cust-id", ProjectID: proj.ID, Email: "me@example.com"},
 	}
 	router, err := buildRouter(logDiscard(), nil, Deps{
-		ProjectRepo: projectRepo,
-		ProductSvc:  &stubProductService{},
-		CartSvc:     &stubCartService{},
-		CategorySvc: &stubCategoryService{},
-		CustomerSvc: authSvc,
+		ProjectRepo:  projectRepo,
+		ProductSvc:   &stubProductService{},
+		CartSvc:      &stubCartService{},
+		CategorySvc:  &stubCategoryService{},
+		CustomerSvc:  authSvc,
+		AnonymousSvc: &stubAnonymousService{},
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -182,11 +203,12 @@ func TestLoginHandler_Success(t *testing.T) {
 	}
 	cartSvc := &stubLoginCartService{err: domain.ErrNotFound}
 	router, err := buildRouter(logDiscard(), nil, Deps{
-		ProjectRepo: projectRepo,
-		ProductSvc:  &stubProductService{},
-		CartSvc:     cartSvc,
-		CategorySvc: &stubCategoryService{},
-		CustomerSvc: authSvc,
+		ProjectRepo:  projectRepo,
+		ProductSvc:   &stubProductService{},
+		CartSvc:      cartSvc,
+		CategorySvc:  &stubCategoryService{},
+		CustomerSvc:  authSvc,
+		AnonymousSvc: &stubAnonymousService{},
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -214,11 +236,12 @@ func TestLoginHandler_InvalidBody(t *testing.T) {
 	authSvc := &stubCustomerAuthSvc{}
 	cartSvc := &stubLoginCartService{}
 	router, err := buildRouter(logDiscard(), nil, Deps{
-		ProjectRepo: projectRepo,
-		ProductSvc:  &stubProductService{},
-		CartSvc:     cartSvc,
-		CategorySvc: &stubCategoryService{},
-		CustomerSvc: authSvc,
+		ProjectRepo:  projectRepo,
+		ProductSvc:   &stubProductService{},
+		CartSvc:      cartSvc,
+		CategorySvc:  &stubCategoryService{},
+		CustomerSvc:  authSvc,
+		AnonymousSvc: &stubAnonymousService{},
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -244,11 +267,12 @@ func TestLoginHandler_InvalidCredentials(t *testing.T) {
 	}
 	cartSvc := &stubLoginCartService{}
 	router, err := buildRouter(logDiscard(), nil, Deps{
-		ProjectRepo: projectRepo,
-		ProductSvc:  &stubProductService{},
-		CartSvc:     cartSvc,
-		CategorySvc: &stubCategoryService{},
-		CustomerSvc: authSvc,
+		ProjectRepo:  projectRepo,
+		ProductSvc:   &stubProductService{},
+		CartSvc:      cartSvc,
+		CategorySvc:  &stubCategoryService{},
+		CustomerSvc:  authSvc,
+		AnonymousSvc: &stubAnonymousService{},
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)

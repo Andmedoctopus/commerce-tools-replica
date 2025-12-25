@@ -41,6 +41,11 @@ type tokenRequest struct {
 	Scope     string `form:"scope" binding:"required"`
 }
 
+type anonymousTokenRequest struct {
+	GrantType string `form:"grant_type" binding:"required"`
+	Scope     string `form:"scope" binding:"required"`
+}
+
 type customerResponse struct {
 	Customer ctCustomer `json:"customer"`
 }

@@ -163,6 +163,18 @@ func (s *stubCartService) Update(_ context.Context, _ string, _ string, _ string
 	return nil, nil
 }
 
+func (s *stubCartService) GetActiveAnonymous(_ context.Context, _ string, _ string) (*domain.Cart, error) {
+	return nil, nil
+}
+
+func (s *stubCartService) UpdateAnonymous(_ context.Context, _ string, _ string, _ string, _ cartsvc.UpdateInput) (*domain.Cart, error) {
+	return nil, nil
+}
+
+func (s *stubCartService) AssignCustomerFromAnonymous(_ context.Context, _ string, _ string, _ string) (*domain.Cart, error) {
+	return nil, nil
+}
+
 type stubCategoryService struct {
 	list []domain.Category
 	err  error
@@ -198,6 +210,23 @@ func (s *stubCustomerService) AccessTTLSeconds() int {
 	return 3600
 }
 
+type stubAnonymousService struct {
+	anonID string
+	err    error
+}
+
+func (s *stubAnonymousService) Issue(_ context.Context, _ string) (string, string, string, error) {
+	return "access-token", "refresh-token", s.anonID, s.err
+}
+
+func (s *stubAnonymousService) LookupByToken(_ context.Context, _ string, _ string) (string, error) {
+	return s.anonID, s.err
+}
+
+func (s *stubAnonymousService) AccessTTLSeconds() int {
+	return 3600
+}
+
 func TestProductsHandler_List(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	proj := &domain.Project{ID: "proj-id", Key: "proj-key"}
@@ -211,11 +240,12 @@ func TestProductsHandler_List(t *testing.T) {
 	categorySvc := &stubCategoryService{}
 	customerSvc := &stubCustomerService{customer: &domain.Customer{ID: "cust-id", ProjectID: proj.ID, Email: "a@example.com"}}
 	router, err := buildRouter(logDiscard(), nil, Deps{
-		ProjectRepo: projectRepo,
-		ProductSvc:  productSvc,
-		CartSvc:     cartSvc,
-		CategorySvc: categorySvc,
-		CustomerSvc: customerSvc,
+		ProjectRepo:  projectRepo,
+		ProductSvc:   productSvc,
+		CartSvc:      cartSvc,
+		CategorySvc:  categorySvc,
+		CustomerSvc:  customerSvc,
+		AnonymousSvc: &stubAnonymousService{},
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -245,11 +275,12 @@ func TestProductsHandler_Get_NotFound(t *testing.T) {
 	categorySvc := &stubCategoryService{}
 	customerSvc := &stubCustomerService{customer: &domain.Customer{ID: "cust-id", ProjectID: proj.ID}}
 	router, err := buildRouter(logDiscard(), nil, Deps{
-		ProjectRepo: projectRepo,
-		ProductSvc:  productSvc,
-		CartSvc:     cartSvc,
-		CategorySvc: categorySvc,
-		CustomerSvc: customerSvc,
+		ProjectRepo:  projectRepo,
+		ProductSvc:   productSvc,
+		CartSvc:      cartSvc,
+		CategorySvc:  categorySvc,
+		CustomerSvc:  customerSvc,
+		AnonymousSvc: &stubAnonymousService{},
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -283,11 +314,12 @@ func TestProductsHandler_Search(t *testing.T) {
 	}
 	customerSvc := &stubCustomerService{customer: &domain.Customer{ID: "cust-id", ProjectID: proj.ID}}
 	router, err := buildRouter(logDiscard(), nil, Deps{
-		ProjectRepo: projectRepo,
-		ProductSvc:  productSvc,
-		CartSvc:     cartSvc,
-		CategorySvc: categorySvc,
-		CustomerSvc: customerSvc,
+		ProjectRepo:  projectRepo,
+		ProductSvc:   productSvc,
+		CartSvc:      cartSvc,
+		CategorySvc:  categorySvc,
+		CustomerSvc:  customerSvc,
+		AnonymousSvc: &stubAnonymousService{},
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -322,11 +354,12 @@ func TestProductsHandler_SearchSortByPriceDesc(t *testing.T) {
 	categorySvc := &stubCategoryService{}
 	customerSvc := &stubCustomerService{customer: &domain.Customer{ID: "cust-id", ProjectID: proj.ID}}
 	router, err := buildRouter(logDiscard(), nil, Deps{
-		ProjectRepo: projectRepo,
-		ProductSvc:  productSvc,
-		CartSvc:     cartSvc,
-		CategorySvc: categorySvc,
-		CustomerSvc: customerSvc,
+		ProjectRepo:  projectRepo,
+		ProductSvc:   productSvc,
+		CartSvc:      cartSvc,
+		CategorySvc:  categorySvc,
+		CustomerSvc:  customerSvc,
+		AnonymousSvc: &stubAnonymousService{},
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
@@ -368,11 +401,12 @@ func TestCategoriesHandler_List(t *testing.T) {
 	customerSvc := &stubCustomerService{customer: &domain.Customer{ID: "cust-id", ProjectID: proj.ID}}
 
 	router, err := buildRouter(logDiscard(), nil, Deps{
-		ProjectRepo: projectRepo,
-		ProductSvc:  productSvc,
-		CartSvc:     cartSvc,
-		CategorySvc: categorySvc,
-		CustomerSvc: customerSvc,
+		ProjectRepo:  projectRepo,
+		ProductSvc:   productSvc,
+		CartSvc:      cartSvc,
+		CategorySvc:  categorySvc,
+		CustomerSvc:  customerSvc,
+		AnonymousSvc: &stubAnonymousService{},
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)

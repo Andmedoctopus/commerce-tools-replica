@@ -18,6 +18,8 @@ type cartRepo interface {
 	Create(ctx context.Context, in cartrepo.CreateCartInput) (*domain.Cart, error)
 	GetByID(ctx context.Context, projectID, id string) (*domain.Cart, error)
 	GetActiveByCustomer(ctx context.Context, projectID, customerID string) (*domain.Cart, error)
+	GetActiveByAnonymous(ctx context.Context, projectID, anonymousID string) (*domain.Cart, error)
+	AssignCustomerToAnonymous(ctx context.Context, projectID, anonymousID, customerID string) (*domain.Cart, error)
 	AddLineItem(ctx context.Context, cartID string, product domain.Product, quantity int, snapshot map[string]interface{}) error
 	ChangeLineItemQuantity(ctx context.Context, cartID, lineItemID string, quantity int) error
 }
@@ -31,8 +33,9 @@ func New(repo cartrepo.Repository, productRepo productRepo) *Service {
 }
 
 type CreateInput struct {
-	CustomerID *string `json:"customerId,omitempty"`
-	Currency   string  `json:"currency"`
+	CustomerID  *string `json:"customerId,omitempty"`
+	AnonymousID *string `json:"anonymousId,omitempty"`
+	Currency    string  `json:"currency"`
 }
 
 type UpdateInput struct {
@@ -52,9 +55,10 @@ func (s *Service) Create(ctx context.Context, projectID string, in CreateInput) 
 		return nil, errors.New("currency required")
 	}
 	return s.repo.Create(ctx, cartrepo.CreateCartInput{
-		ProjectID:  projectID,
-		CustomerID: in.CustomerID,
-		Currency:   in.Currency,
+		ProjectID:   projectID,
+		CustomerID:  in.CustomerID,
+		AnonymousID: in.AnonymousID,
+		Currency:    in.Currency,
 	})
 }
 
@@ -66,7 +70,23 @@ func (s *Service) GetActive(ctx context.Context, projectID, customerID string) (
 	return s.repo.GetActiveByCustomer(ctx, projectID, customerID)
 }
 
+func (s *Service) GetActiveAnonymous(ctx context.Context, projectID, anonymousID string) (*domain.Cart, error) {
+	return s.repo.GetActiveByAnonymous(ctx, projectID, anonymousID)
+}
+
+func (s *Service) AssignCustomerFromAnonymous(ctx context.Context, projectID, anonymousID, customerID string) (*domain.Cart, error) {
+	return s.repo.AssignCustomerToAnonymous(ctx, projectID, anonymousID, customerID)
+}
+
 func (s *Service) Update(ctx context.Context, projectID, customerID, cartID string, in UpdateInput) (*domain.Cart, error) {
+	return s.updateWithOwner(ctx, projectID, cartID, &customerID, nil, in)
+}
+
+func (s *Service) UpdateAnonymous(ctx context.Context, projectID, anonymousID, cartID string, in UpdateInput) (*domain.Cart, error) {
+	return s.updateWithOwner(ctx, projectID, cartID, nil, &anonymousID, in)
+}
+
+func (s *Service) updateWithOwner(ctx context.Context, projectID, cartID string, customerID, anonymousID *string, in UpdateInput) (*domain.Cart, error) {
 	if len(in.Actions) == 0 {
 		return nil, errors.New("actions required")
 	}
@@ -74,7 +94,16 @@ func (s *Service) Update(ctx context.Context, projectID, customerID, cartID stri
 	if err != nil {
 		return nil, err
 	}
-	if cart.CustomerID == nil || *cart.CustomerID != customerID {
+	switch {
+	case customerID != nil:
+		if cart.CustomerID == nil || *cart.CustomerID != *customerID {
+			return nil, domain.ErrNotFound
+		}
+	case anonymousID != nil:
+		if cart.AnonymousID == nil || *cart.AnonymousID != *anonymousID {
+			return nil, domain.ErrNotFound
+		}
+	default:
 		return nil, domain.ErrNotFound
 	}
 

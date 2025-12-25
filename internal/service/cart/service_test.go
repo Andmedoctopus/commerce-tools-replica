@@ -10,22 +10,22 @@ import (
 )
 
 type stubRepo struct {
-	createCart       *domain.Cart
-	createErr        error
-	getByIDResults   []*domain.Cart
-	getByIDErr       error
-	getByIDCalls     int
-	activeCart       *domain.Cart
-	activeErr        error
-	addLineItemErr   error
+	createCart        *domain.Cart
+	createErr         error
+	getByIDResults    []*domain.Cart
+	getByIDErr        error
+	getByIDCalls      int
+	activeCart        *domain.Cart
+	activeErr         error
+	addLineItemErr    error
 	changeLineItemErr error
-	lastAddCartID    string
-	lastAddProduct   domain.Product
-	lastAddQty       int
-	lastAddSnapshot  map[string]interface{}
-	lastChangeCartID string
-	lastChangeLineID string
-	lastChangeQty    int
+	lastAddCartID     string
+	lastAddProduct    domain.Product
+	lastAddQty        int
+	lastAddSnapshot   map[string]interface{}
+	lastChangeCartID  string
+	lastChangeLineID  string
+	lastChangeQty     int
 }
 
 func (s *stubRepo) Create(_ context.Context, _ cartrepo.CreateCartInput) (*domain.Cart, error) {
@@ -52,6 +52,14 @@ func (s *stubRepo) GetActiveByCustomer(_ context.Context, _, _ string) (*domain.
 	return s.activeCart, s.activeErr
 }
 
+func (s *stubRepo) GetActiveByAnonymous(_ context.Context, _, _ string) (*domain.Cart, error) {
+	return s.activeCart, s.activeErr
+}
+
+func (s *stubRepo) AssignCustomerToAnonymous(_ context.Context, _, _, _ string) (*domain.Cart, error) {
+	return nil, nil
+}
+
 func (s *stubRepo) AddLineItem(_ context.Context, cartID string, product domain.Product, quantity int, snapshot map[string]interface{}) error {
 	s.lastAddCartID = cartID
 	s.lastAddProduct = product
@@ -68,10 +76,10 @@ func (s *stubRepo) ChangeLineItemQuantity(_ context.Context, cartID, lineItemID 
 }
 
 type stubProductRepo struct {
-	product      *domain.Product
-	err          error
-	lastProject  string
-	lastSKU      string
+	product     *domain.Product
+	err         error
+	lastProject string
+	lastSKU     string
 }
 
 func (s *stubProductRepo) GetBySKU(_ context.Context, projectID, sku string) (*domain.Product, error) {
@@ -237,7 +245,7 @@ func TestServiceUpdateChangeLineItemValidation(t *testing.T) {
 
 func TestServiceUpdateChangeLineItemRepoError(t *testing.T) {
 	repo := &stubRepo{
-		getByIDResults:   []*domain.Cart{{ID: "cart", CustomerID: strPtr("cust")}},
+		getByIDResults:    []*domain.Cart{{ID: "cart", CustomerID: strPtr("cust")}},
 		changeLineItemErr: errors.New("change failed"),
 	}
 	svc := &Service{repo: repo}

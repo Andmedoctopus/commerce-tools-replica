@@ -19,19 +19,24 @@ func NewPostgres(pool *pgxpool.Pool) Repository {
 
 func (r *postgresRepo) Create(ctx context.Context, in CreateCartInput) (*domain.Cart, error) {
 	const q = `
-INSERT INTO carts (project_id, customer_id, currency, total_cents, state)
-VALUES ($1, $2, $3, 0, 'active')
-RETURNING id::text, project_id::text, customer_id::text, currency, total_cents, state, created_at
+INSERT INTO carts (project_id, customer_id, anonymous_id, currency, total_cents, state)
+VALUES ($1, $2, $3, $4, 0, 'active')
+RETURNING id::text, project_id::text, customer_id::text, anonymous_id::text, currency, total_cents, state, created_at
 `
 	var cart domain.Cart
 	var customerID *string
+	var anonymousID *string
 	if in.CustomerID != nil {
 		customerID = in.CustomerID
 	}
-	if err := r.pool.QueryRow(ctx, q, in.ProjectID, customerID, in.Currency).Scan(
+	if in.AnonymousID != nil {
+		anonymousID = in.AnonymousID
+	}
+	if err := r.pool.QueryRow(ctx, q, in.ProjectID, customerID, anonymousID, in.Currency).Scan(
 		&cart.ID,
 		&cart.ProjectID,
 		&customerID,
+		&anonymousID,
 		&cart.Currency,
 		&cart.TotalCents,
 		&cart.State,
@@ -40,12 +45,13 @@ RETURNING id::text, project_id::text, customer_id::text, currency, total_cents, 
 		return nil, err
 	}
 	cart.CustomerID = customerID
+	cart.AnonymousID = anonymousID
 	return &cart, nil
 }
 
 func (r *postgresRepo) GetByID(ctx context.Context, projectID, id string) (*domain.Cart, error) {
 	const cartQuery = `
-SELECT id::text, project_id::text, customer_id::text, currency, total_cents, state, created_at
+SELECT id::text, project_id::text, customer_id::text, anonymous_id::text, currency, total_cents, state, created_at
 FROM carts
 WHERE project_id = $1 AND id = $2
 `
@@ -54,13 +60,46 @@ WHERE project_id = $1 AND id = $2
 
 func (r *postgresRepo) GetActiveByCustomer(ctx context.Context, projectID, customerID string) (*domain.Cart, error) {
 	const cartQuery = `
-SELECT id::text, project_id::text, customer_id::text, currency, total_cents, state, created_at
+SELECT id::text, project_id::text, customer_id::text, anonymous_id::text, currency, total_cents, state, created_at
 FROM carts
 WHERE project_id = $1 AND customer_id = $2 AND state = 'active'
 ORDER BY created_at DESC
 LIMIT 1
 `
 	return r.fetchCart(ctx, cartQuery, projectID, customerID)
+}
+
+func (r *postgresRepo) GetActiveByAnonymous(ctx context.Context, projectID, anonymousID string) (*domain.Cart, error) {
+	const cartQuery = `
+SELECT id::text, project_id::text, customer_id::text, anonymous_id::text, currency, total_cents, state, created_at
+FROM carts
+WHERE project_id = $1 AND anonymous_id = $2 AND state = 'active'
+ORDER BY created_at DESC
+LIMIT 1
+`
+	return r.fetchCart(ctx, cartQuery, projectID, anonymousID)
+}
+
+func (r *postgresRepo) AssignCustomerToAnonymous(ctx context.Context, projectID, anonymousID, customerID string) (*domain.Cart, error) {
+	const q = `
+UPDATE carts
+SET customer_id = $1,
+    anonymous_id = NULL
+WHERE project_id = $2 AND anonymous_id = $3 AND state = 'active'
+RETURNING id::text
+`
+	var cartID string
+	if err := r.pool.QueryRow(ctx, q, customerID, projectID, anonymousID).Scan(&cartID); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, domain.ErrNotFound
+		}
+		return nil, err
+	}
+	return r.fetchCart(ctx, `
+SELECT id::text, project_id::text, customer_id::text, anonymous_id::text, currency, total_cents, state, created_at
+FROM carts
+WHERE id = $1
+`, cartID)
 }
 
 func (r *postgresRepo) AddLineItem(ctx context.Context, cartID string, product domain.Product, quantity int, snapshot map[string]interface{}) error {
@@ -161,10 +200,12 @@ WHERE id = $3 AND cart_id = $4
 func (r *postgresRepo) fetchCart(ctx context.Context, cartQuery string, args ...interface{}) (*domain.Cart, error) {
 	var cart domain.Cart
 	var customerID *string
+	var anonymousID *string
 	err := r.pool.QueryRow(ctx, cartQuery, args...).Scan(
 		&cart.ID,
 		&cart.ProjectID,
 		&customerID,
+		&anonymousID,
 		&cart.Currency,
 		&cart.TotalCents,
 		&cart.State,
@@ -177,6 +218,7 @@ func (r *postgresRepo) fetchCart(ctx context.Context, cartQuery string, args ...
 		return nil, err
 	}
 	cart.CustomerID = customerID
+	cart.AnonymousID = anonymousID
 
 	const linesQuery = `
 SELECT id::text, cart_id::text, product_id::text, quantity, unit_price_cents, total_cents, snapshot, created_at

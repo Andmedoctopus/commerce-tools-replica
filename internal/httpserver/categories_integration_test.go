@@ -51,11 +51,12 @@ func TestCategoriesHandler_IntegrationReturnsHierarchy(t *testing.T) {
 
 	gin.SetMode(gin.TestMode)
 	router, err := buildRouter(logDiscard(), pool, Deps{
-		ProjectRepo: &stubProjectRepo{project: &domain.Project{ID: projectID, Key: "proj-key"}},
-		ProductSvc:  &stubProductService{},
-		CartSvc:     &stubCartService{},
-		CategorySvc: catSvc,
-		CustomerSvc: &stubCustomerService{customer: &domain.Customer{ID: "cust", ProjectID: projectID}},
+		ProjectRepo:  &stubProjectRepo{project: &domain.Project{ID: projectID, Key: "proj-key"}},
+		ProductSvc:   &stubProductService{},
+		CartSvc:      &stubCartService{},
+		CategorySvc:  catSvc,
+		CustomerSvc:  &stubCustomerService{customer: &domain.Customer{ID: "cust", ProjectID: projectID}},
+		AnonymousSvc: &stubAnonymousService{},
 	})
 	if err != nil {
 		t.Fatalf("build router: %v", err)
