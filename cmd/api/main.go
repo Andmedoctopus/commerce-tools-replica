@@ -17,6 +17,7 @@ import (
 	customerrepo "commercetools-replica/internal/repository/customer"
 	productrepo "commercetools-replica/internal/repository/product"
 	projectrepo "commercetools-replica/internal/repository/project"
+	tokenrepo "commercetools-replica/internal/repository/token"
 	anonymoussvc "commercetools-replica/internal/service/anonymous"
 	cartsvc "commercetools-replica/internal/service/cart"
 	categorysvc "commercetools-replica/internal/service/category"
@@ -43,8 +44,9 @@ func main() {
 	categoryRepo := categoryrepo.NewPostgres(dbpool)
 	categoryService := categorysvc.New(categoryRepo)
 	customerRepo := customerrepo.NewPostgres(dbpool, logger)
-	customerService := customersvc.New(customerRepo)
-	anonymousService := anonymoussvc.New()
+	tokenRepo := tokenrepo.NewPostgres(dbpool)
+	customerService := customersvc.New(customerRepo, tokenRepo)
+	anonymousService := anonymoussvc.New(tokenRepo)
 
 	srv, err := httpserver.New(cfg.HTTPAddr, logger, dbpool, httpserver.Deps{
 		ProjectRepo:  projectRepo,

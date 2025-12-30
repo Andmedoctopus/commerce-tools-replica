@@ -9,35 +9,35 @@ import (
 )
 
 type ctCart struct {
-	Type                      string                  `json:"type"`
-	ID                        string                  `json:"id"`
-	Version                   int                     `json:"version"`
-	VersionModifiedAt         time.Time               `json:"versionModifiedAt"`
-	LastMessageSequenceNumber int                     `json:"lastMessageSequenceNumber,omitempty"`
-	CreatedAt                 time.Time               `json:"createdAt"`
-	LastModifiedAt            time.Time               `json:"lastModifiedAt"`
-	LastModifiedBy            *ctActor                `json:"lastModifiedBy,omitempty"`
-	CreatedBy                 *ctActor                `json:"createdBy,omitempty"`
-	CustomerID                string                  `json:"customerId,omitempty"`
-	LineItems                 []ctLineItem            `json:"lineItems"`
-	CartState                 string                  `json:"cartState"`
-	TotalPrice                ctPriceValue            `json:"totalPrice"`
-	ShippingMode              string                  `json:"shippingMode"`
-	Shipping                  []interface{}           `json:"shipping"`
-	CustomLineItems           []interface{}           `json:"customLineItems"`
-	DiscountCodes             []interface{}           `json:"discountCodes"`
-	DirectDiscounts           []interface{}           `json:"directDiscounts"`
-	InventoryMode             string                  `json:"inventoryMode"`
-	PriceRoundingMode         string                  `json:"priceRoundingMode"`
-	TaxMode                   string                  `json:"taxMode"`
-	TaxRoundingMode           string                  `json:"taxRoundingMode"`
-	TaxCalculationMode        string                  `json:"taxCalculationMode"`
-	DeleteDaysAfterLastModification int               `json:"deleteDaysAfterLastModification"`
-	RefusedGifts              []interface{}           `json:"refusedGifts"`
-	Origin                    string                  `json:"origin"`
-	ItemShippingAddresses     []interface{}           `json:"itemShippingAddresses"`
-	DiscountTypeCombination   ctDiscountTypeCombination `json:"discountTypeCombination"`
-	TotalLineItemQuantity     int                     `json:"totalLineItemQuantity,omitempty"`
+	Type                            string                    `json:"type"`
+	ID                              string                    `json:"id"`
+	Version                         int                       `json:"version"`
+	VersionModifiedAt               time.Time                 `json:"versionModifiedAt"`
+	LastMessageSequenceNumber       int                       `json:"lastMessageSequenceNumber,omitempty"`
+	CreatedAt                       time.Time                 `json:"createdAt"`
+	LastModifiedAt                  time.Time                 `json:"lastModifiedAt"`
+	LastModifiedBy                  *ctActor                  `json:"lastModifiedBy,omitempty"`
+	CreatedBy                       *ctActor                  `json:"createdBy,omitempty"`
+	CustomerID                      string                    `json:"customerId,omitempty"`
+	LineItems                       []ctLineItem              `json:"lineItems"`
+	CartState                       string                    `json:"cartState"`
+	TotalPrice                      ctPriceValue              `json:"totalPrice"`
+	ShippingMode                    string                    `json:"shippingMode"`
+	Shipping                        []interface{}             `json:"shipping"`
+	CustomLineItems                 []interface{}             `json:"customLineItems"`
+	DiscountCodes                   []interface{}             `json:"discountCodes"`
+	DirectDiscounts                 []interface{}             `json:"directDiscounts"`
+	InventoryMode                   string                    `json:"inventoryMode"`
+	PriceRoundingMode               string                    `json:"priceRoundingMode"`
+	TaxMode                         string                    `json:"taxMode"`
+	TaxRoundingMode                 string                    `json:"taxRoundingMode"`
+	TaxCalculationMode              string                    `json:"taxCalculationMode"`
+	DeleteDaysAfterLastModification int                       `json:"deleteDaysAfterLastModification"`
+	RefusedGifts                    []interface{}             `json:"refusedGifts"`
+	Origin                          string                    `json:"origin"`
+	ItemShippingAddresses           []interface{}             `json:"itemShippingAddresses"`
+	DiscountTypeCombination         ctDiscountTypeCombination `json:"discountTypeCombination"`
+	TotalLineItemQuantity           int                       `json:"totalLineItemQuantity,omitempty"`
 }
 
 type ctActor struct {
@@ -51,25 +51,25 @@ type ctDiscountTypeCombination struct {
 }
 
 type ctLineItem struct {
-	ID                        string         `json:"id"`
-	ProductID                 string         `json:"productId"`
-	ProductKey                string         `json:"productKey,omitempty"`
-	ProductType               *ctProductType `json:"productType,omitempty"`
-	ProductSlug               map[string]string `json:"productSlug,omitempty"`
-	Name                      map[string]string `json:"name"`
-	Variant                   ctVariant      `json:"variant"`
-	Price                     ctPrice        `json:"price"`
-	Quantity                  int            `json:"quantity"`
-	DiscountedPricePerQuantity []interface{} `json:"discountedPricePerQuantity"`
-	PerMethodTaxRate          []interface{}  `json:"perMethodTaxRate"`
-	AddedAt                   time.Time      `json:"addedAt"`
-	LastModifiedAt            time.Time      `json:"lastModifiedAt"`
-	State                     []interface{}  `json:"state"`
-	PriceMode                 string         `json:"priceMode"`
-	LineItemMode              string         `json:"lineItemMode"`
-	PriceRoundingMode         string         `json:"priceRoundingMode"`
-	TotalPrice                ctPriceValue   `json:"totalPrice"`
-	TaxedPricePortions        []interface{}  `json:"taxedPricePortions"`
+	ID                         string            `json:"id"`
+	ProductID                  string            `json:"productId"`
+	ProductKey                 string            `json:"productKey,omitempty"`
+	ProductType                *ctProductType    `json:"productType,omitempty"`
+	ProductSlug                map[string]string `json:"productSlug,omitempty"`
+	Name                       map[string]string `json:"name"`
+	Variant                    ctVariant         `json:"variant"`
+	Price                      ctPrice           `json:"price"`
+	Quantity                   int               `json:"quantity"`
+	DiscountedPricePerQuantity []interface{}     `json:"discountedPricePerQuantity"`
+	PerMethodTaxRate           []interface{}     `json:"perMethodTaxRate"`
+	AddedAt                    time.Time         `json:"addedAt"`
+	LastModifiedAt             time.Time         `json:"lastModifiedAt"`
+	State                      []interface{}     `json:"state"`
+	PriceMode                  string            `json:"priceMode"`
+	LineItemMode               string            `json:"lineItemMode"`
+	PriceRoundingMode          string            `json:"priceRoundingMode"`
+	TotalPrice                 ctPriceValue      `json:"totalPrice"`
+	TaxedPricePortions         []interface{}     `json:"taxedPricePortions"`
 }
 
 type ctProductType struct {
@@ -94,6 +94,8 @@ func toCTCart(cart domain.Cart, customer *domain.Customer) ctCart {
 		state = "Active"
 	} else if strings.EqualFold(state, "active") {
 		state = "Active"
+	} else if strings.EqualFold(state, "deleted") {
+		state = "Deleted"
 	}
 
 	customerID := ""
@@ -143,14 +145,14 @@ func toCTCart(cart domain.Cart, customer *domain.Customer) ctCart {
 		}
 
 		lineItems = append(lineItems, ctLineItem{
-			ID:         line.ID,
-			ProductID:  line.ProductID,
-			ProductKey: snap.ProductKey,
-			ProductSlug: productSlug,
-			Name:       map[string]string{"en": name},
-			Variant:    variant,
-			Price:      ctPrice{Value: ctPriceValue{Type: "centPrecision", CurrencyCode: currency, CentAmount: price, FractionDigits: 2}},
-			Quantity:   line.Quantity,
+			ID:                         line.ID,
+			ProductID:                  line.ProductID,
+			ProductKey:                 snap.ProductKey,
+			ProductSlug:                productSlug,
+			Name:                       map[string]string{"en": name},
+			Variant:                    variant,
+			Price:                      ctPrice{Value: ctPriceValue{Type: "centPrecision", CurrencyCode: currency, CentAmount: price, FractionDigits: 2}},
+			Quantity:                   line.Quantity,
 			DiscountedPricePerQuantity: []interface{}{},
 			PerMethodTaxRate:           []interface{}{},
 			AddedAt:                    line.CreatedAt,
@@ -179,34 +181,34 @@ func toCTCart(cart domain.Cart, customer *domain.Customer) ctCart {
 	}
 
 	out := ctCart{
-		Type:                  "Cart",
-		ID:                    cart.ID,
-		Version:               1,
-		VersionModifiedAt:     cart.CreatedAt,
-		LastMessageSequenceNumber: 1,
-		CreatedAt:             cart.CreatedAt,
-		LastModifiedAt:        cart.CreatedAt,
-		LastModifiedBy:        actor,
-		CreatedBy:             actor,
-		CustomerID:            customerID,
-		LineItems:             lineItems,
-		CartState:             state,
-		TotalPrice:            totalPrice,
-		ShippingMode:          "Single",
-		Shipping:              []interface{}{},
-		CustomLineItems:       []interface{}{},
-		DiscountCodes:         []interface{}{},
-		DirectDiscounts:       []interface{}{},
-		InventoryMode:         "None",
-		PriceRoundingMode:     "HalfEven",
-		TaxMode:               "Platform",
-		TaxRoundingMode:       "HalfEven",
-		TaxCalculationMode:    "LineItemLevel",
+		Type:                            "Cart",
+		ID:                              cart.ID,
+		Version:                         1,
+		VersionModifiedAt:               cart.CreatedAt,
+		LastMessageSequenceNumber:       1,
+		CreatedAt:                       cart.CreatedAt,
+		LastModifiedAt:                  cart.CreatedAt,
+		LastModifiedBy:                  actor,
+		CreatedBy:                       actor,
+		CustomerID:                      customerID,
+		LineItems:                       lineItems,
+		CartState:                       state,
+		TotalPrice:                      totalPrice,
+		ShippingMode:                    "Single",
+		Shipping:                        []interface{}{},
+		CustomLineItems:                 []interface{}{},
+		DiscountCodes:                   []interface{}{},
+		DirectDiscounts:                 []interface{}{},
+		InventoryMode:                   "None",
+		PriceRoundingMode:               "HalfEven",
+		TaxMode:                         "Platform",
+		TaxRoundingMode:                 "HalfEven",
+		TaxCalculationMode:              "LineItemLevel",
 		DeleteDaysAfterLastModification: 90,
-		RefusedGifts:          []interface{}{},
-		Origin:                "Customer",
-		ItemShippingAddresses: []interface{}{},
-		DiscountTypeCombination: ctDiscountTypeCombination{Type: "Stacking"},
+		RefusedGifts:                    []interface{}{},
+		Origin:                          "Customer",
+		ItemShippingAddresses:           []interface{}{},
+		DiscountTypeCombination:         ctDiscountTypeCombination{Type: "Stacking"},
 	}
 	if totalQty > 0 {
 		out.TotalLineItemQuantity = totalQty

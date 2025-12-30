@@ -1,0 +1,21 @@
+{
+"limit": 20,
+"offset": 0,
+"count": 1,
+"total": 1,
+"results": [
+{
+"id": "disc-1",
+"key": "spring-15",
+"name": { "en": "Spring 15%" },
+"description": { "en": "15% off selected categories" },
+"value": { "type": "relative", "permyriad": 1500 },
+"predicate": "product.categories.id containsAny (\"cat-uuid-1\", \"cat-uuid-2\")",
+"isActive": true,
+"sortOrder": "0.2",
+"version": 1,
+"createdAt": "2024-01-01T00:00:00.000Z",
+"lastModifiedAt": "2024-01-01T00:00:00.000Z"
+}
+]
+}

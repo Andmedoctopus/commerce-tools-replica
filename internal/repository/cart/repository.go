@@ -21,4 +21,5 @@ type Repository interface {
 	AssignCustomerToAnonymous(ctx context.Context, projectID, anonymousID, customerID string) (*domain.Cart, error)
 	AddLineItem(ctx context.Context, cartID string, product domain.Product, quantity int, snapshot map[string]interface{}) error
 	ChangeLineItemQuantity(ctx context.Context, cartID, lineItemID string, quantity int) error
+	SetState(ctx context.Context, projectID, cartID, state string) error
 }

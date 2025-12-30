@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"commercetools-replica/internal/domain"
+	tokenrepo "commercetools-replica/internal/repository/token"
 )
 
 // memoryRepo is a lightweight in-memory customer repository for tests.
@@ -12,8 +13,41 @@ type memoryRepo struct {
 	byProject map[string]map[string]domain.Customer
 }
 
+type memoryTokenRepo struct {
+	tokens map[string]tokenrepo.Token
+}
+
 func newMemoryRepo() *memoryRepo {
 	return &memoryRepo{byProject: make(map[string]map[string]domain.Customer)}
+}
+
+func newMemoryTokenRepo() *memoryTokenRepo {
+	return &memoryTokenRepo{tokens: make(map[string]tokenrepo.Token)}
+}
+
+func (r *memoryTokenRepo) Create(_ context.Context, token tokenrepo.Token) error {
+	if _, exists := r.tokens[token.Token]; exists {
+		return domain.ErrAlreadyExists
+	}
+	r.tokens[token.Token] = token
+	return nil
+}
+
+func (r *memoryTokenRepo) Get(_ context.Context, token string) (*tokenrepo.Token, error) {
+	t, ok := r.tokens[token]
+	if !ok {
+		return nil, domain.ErrNotFound
+	}
+	clone := t
+	return &clone, nil
+}
+
+func (r *memoryTokenRepo) Delete(_ context.Context, token string) error {
+	if _, ok := r.tokens[token]; !ok {
+		return domain.ErrNotFound
+	}
+	delete(r.tokens, token)
+	return nil
 }
 
 func (r *memoryRepo) Create(_ context.Context, c domain.Customer) (*domain.Customer, error) {
@@ -59,7 +93,7 @@ func (r *memoryRepo) GetByID(_ context.Context, projectID, id string) (*domain.C
 
 func TestSignupAndLogin_SucceedsWithTrimmedPassword(t *testing.T) {
 	repo := newMemoryRepo()
-	svc := New(repo)
+	svc := New(repo, newMemoryTokenRepo())
 
 	ctx := context.Background()
 	projectID := "proj-1"
@@ -103,7 +137,7 @@ func TestValidatePassword_FailsOnWeakValues(t *testing.T) {
 
 func TestLogin_InvalidCredentials(t *testing.T) {
 	repo := newMemoryRepo()
-	svc := New(repo)
+	svc := New(repo, newMemoryTokenRepo())
 	ctx := context.Background()
 
 	if _, err := svc.Signup(ctx, "proj", SignupInput{

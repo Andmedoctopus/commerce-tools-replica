@@ -31,6 +31,8 @@ type cartService interface {
 	GetActiveAnonymous(ctx context.Context, projectID, anonymousID string) (*domain.Cart, error)
 	UpdateAnonymous(ctx context.Context, projectID, anonymousID, cartID string, in cartsvc.UpdateInput) (*domain.Cart, error)
 	AssignCustomerFromAnonymous(ctx context.Context, projectID, anonymousID, customerID string) (*domain.Cart, error)
+	Delete(ctx context.Context, projectID, customerID, cartID string) (*domain.Cart, error)
+	DeleteAnonymous(ctx context.Context, projectID, anonymousID, cartID string) (*domain.Cart, error)
 }
 
 type categoryService interface {
@@ -345,6 +347,31 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 					return
 				}
 				logger.Printf("cart update error project_id=%s cart_id=%s error=%v", project.ID, id, err)
+				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, toCTCart(*cart, actor.Customer))
+		})
+		group.DELETE("/me/carts/:id", func(c *gin.Context) {
+			project := mustProject(c)
+			actor, ok := authorizeActor(c, project, deps.CustomerSvc, deps.AnonymousSvc)
+			if !ok {
+				return
+			}
+			id := c.Param("id")
+			var cart *domain.Cart
+			var err error
+			if actor.Customer != nil {
+				cart, err = deps.CartSvc.Delete(c.Request.Context(), project.ID, actor.Customer.ID, id)
+			} else {
+				cart, err = deps.CartSvc.DeleteAnonymous(c.Request.Context(), project.ID, actor.AnonymousID, id)
+			}
+			if err != nil {
+				if errors.Is(err, domain.ErrNotFound) {
+					c.JSON(http.StatusNotFound, gin.H{"error": "cart not found"})
+					return
+				}
+				logger.Printf("cart delete error project_id=%s cart_id=%s error=%v", project.ID, id, err)
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}

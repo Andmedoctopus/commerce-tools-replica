@@ -26,6 +26,10 @@ type stubRepo struct {
 	lastChangeCartID  string
 	lastChangeLineID  string
 	lastChangeQty     int
+	lastStateProject  string
+	lastStateCartID   string
+	lastStateValue    string
+	setStateErr       error
 }
 
 func (s *stubRepo) Create(_ context.Context, _ cartrepo.CreateCartInput) (*domain.Cart, error) {
@@ -73,6 +77,13 @@ func (s *stubRepo) ChangeLineItemQuantity(_ context.Context, cartID, lineItemID 
 	s.lastChangeLineID = lineItemID
 	s.lastChangeQty = quantity
 	return s.changeLineItemErr
+}
+
+func (s *stubRepo) SetState(_ context.Context, projectID, cartID, state string) error {
+	s.lastStateProject = projectID
+	s.lastStateCartID = cartID
+	s.lastStateValue = state
+	return s.setStateErr
 }
 
 type stubProductRepo struct {
@@ -273,5 +284,31 @@ func TestServiceUpdateChangeLineItemSuccess(t *testing.T) {
 	}
 	if repo.lastChangeCartID != "cart" || repo.lastChangeLineID != "line" || repo.lastChangeQty != 3 {
 		t.Fatalf("change line item not called as expected")
+	}
+}
+
+func TestServiceDeleteCustomerOwnership(t *testing.T) {
+	repo := &stubRepo{getByIDResults: []*domain.Cart{{ID: "cart", CustomerID: strPtr("other")}}}
+	svc := &Service{repo: repo}
+	_, err := svc.Delete(context.Background(), "proj", "cust", "cart")
+	if !errors.Is(err, domain.ErrNotFound) {
+		t.Fatalf("expected not found, got %v", err)
+	}
+}
+
+func TestServiceDeleteCustomerHappyPath(t *testing.T) {
+	initial := &domain.Cart{ID: "cart", CustomerID: strPtr("cust")}
+	deleted := &domain.Cart{ID: "cart", CustomerID: strPtr("cust"), State: "deleted"}
+	repo := &stubRepo{getByIDResults: []*domain.Cart{initial, deleted}}
+	svc := &Service{repo: repo}
+	got, err := svc.Delete(context.Background(), "proj", "cust", "cart")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got != deleted {
+		t.Fatalf("unexpected cart: %+v", got)
+	}
+	if repo.lastStateProject != "proj" || repo.lastStateCartID != "cart" || repo.lastStateValue != "deleted" {
+		t.Fatalf("unexpected SetState args: %s %s %s", repo.lastStateProject, repo.lastStateCartID, repo.lastStateValue)
 	}
 }

@@ -175,6 +175,14 @@ func (s *stubCartService) AssignCustomerFromAnonymous(_ context.Context, _ strin
 	return nil, nil
 }
 
+func (s *stubCartService) Delete(_ context.Context, _ string, _ string, _ string) (*domain.Cart, error) {
+	return nil, nil
+}
+
+func (s *stubCartService) DeleteAnonymous(_ context.Context, _ string, _ string, _ string) (*domain.Cart, error) {
+	return nil, nil
+}
+
 type stubCategoryService struct {
 	list []domain.Category
 	err  error

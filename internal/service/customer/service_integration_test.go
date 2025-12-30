@@ -8,6 +8,7 @@ import (
 
 	"commercetools-replica/internal/migrate"
 	customerrepo "commercetools-replica/internal/repository/customer"
+	tokenrepo "commercetools-replica/internal/repository/token"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
@@ -27,7 +28,8 @@ func TestSignupAndLogin_Integration(t *testing.T) {
 	}
 
 	repo := customerrepo.NewPostgres(pool, log.New(os.Stdout, "[test] ", log.LstdFlags))
-	svc := New(repo)
+	tokenRepo := tokenrepo.NewPostgres(pool)
+	svc := New(repo, tokenRepo)
 
 	password := "Abcdefg1"
 	cust, err := svc.Signup(ctx, projectID, SignupInput{

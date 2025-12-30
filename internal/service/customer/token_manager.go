@@ -1,10 +1,14 @@
 package customer
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
-	"sync"
+	"errors"
 	"time"
+
+	"commercetools-replica/internal/domain"
+	tokenrepo "commercetools-replica/internal/repository/token"
 )
 
 type tokenMeta struct {
@@ -14,46 +18,58 @@ type tokenMeta struct {
 }
 
 type tokenManager struct {
-	mu     sync.RWMutex
-	tokens map[string]tokenMeta
+	repo tokenrepo.Repository
 }
 
-func newTokenManager() *tokenManager {
+func newTokenManager(repo tokenrepo.Repository) *tokenManager {
 	return &tokenManager{
-		tokens: make(map[string]tokenMeta),
+		repo: repo,
 	}
 }
 
-func (m *tokenManager) Issue(projectID, customerID string, ttl time.Duration) (string, error) {
-	token, err := randomToken()
-	if err != nil {
+func (m *tokenManager) Issue(ctx context.Context, projectID, customerID, kind string, ttl time.Duration) (string, error) {
+	expiresAt := time.Now().Add(ttl)
+	for i := 0; i < 5; i++ {
+		token, err := randomToken()
+		if err != nil {
+			return "", err
+		}
+		customer := customerID
+		err = m.repo.Create(ctx, tokenrepo.Token{
+			Token:      token,
+			ProjectID:  projectID,
+			CustomerID: &customer,
+			Kind:       kind,
+			ExpiresAt:  expiresAt,
+		})
+		if err == nil {
+			return token, nil
+		}
+		if errors.Is(err, domain.ErrAlreadyExists) {
+			continue
+		}
 		return "", err
 	}
-	meta := tokenMeta{
-		CustomerID: customerID,
-		ProjectID:  projectID,
-		ExpiresAt:  time.Now().Add(ttl),
-	}
-	m.mu.Lock()
-	m.tokens[token] = meta
-	m.mu.Unlock()
-	return token, nil
+	return "", errors.New("token collision")
 }
 
-func (m *tokenManager) Validate(token string) (tokenMeta, bool) {
-	m.mu.RLock()
-	meta, ok := m.tokens[token]
-	m.mu.RUnlock()
-	if !ok {
+func (m *tokenManager) Validate(ctx context.Context, token string) (tokenMeta, bool) {
+	meta, err := m.repo.Get(ctx, token)
+	if err != nil {
+		return tokenMeta{}, false
+	}
+	if meta.Kind != "access" || meta.CustomerID == nil {
 		return tokenMeta{}, false
 	}
 	if time.Now().After(meta.ExpiresAt) {
-		m.mu.Lock()
-		delete(m.tokens, token)
-		m.mu.Unlock()
+		_ = m.repo.Delete(ctx, token)
 		return tokenMeta{}, false
 	}
-	return meta, true
+	return tokenMeta{
+		CustomerID: *meta.CustomerID,
+		ProjectID:  meta.ProjectID,
+		ExpiresAt:  meta.ExpiresAt,
+	}, true
 }
 
 func randomToken() (string, error) {

@@ -197,6 +197,21 @@ WHERE id = $3 AND cart_id = $4
 	return tx.Commit(ctx)
 }
 
+func (r *postgresRepo) SetState(ctx context.Context, projectID, cartID, state string) error {
+	cmd, err := r.pool.Exec(ctx, `
+UPDATE carts
+SET state = $1
+WHERE project_id = $2 AND id = $3
+`, state, projectID, cartID)
+	if err != nil {
+		return err
+	}
+	if cmd.RowsAffected() == 0 {
+		return domain.ErrNotFound
+	}
+	return nil
+}
+
 func (r *postgresRepo) fetchCart(ctx context.Context, cartQuery string, args ...interface{}) (*domain.Cart, error) {
 	var cart domain.Cart
 	var customerID *string

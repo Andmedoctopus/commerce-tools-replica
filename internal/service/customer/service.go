@@ -11,6 +11,7 @@ import (
 
 	"commercetools-replica/internal/domain"
 	custrepo "commercetools-replica/internal/repository/customer"
+	tokenrepo "commercetools-replica/internal/repository/token"
 	"golang.org/x/crypto/bcrypt"
 )
 
@@ -31,10 +32,10 @@ type Service struct {
 }
 
 // New creates a Service with sane defaults.
-func New(repo custrepo.Repository) *Service {
+func New(repo custrepo.Repository, tokens tokenrepo.Repository) *Service {
 	return &Service{
 		repo:        repo,
-		tokens:      newTokenManager(),
+		tokens:      newTokenManager(tokens),
 		accessTTL:   48 * time.Hour,
 		refreshTTL:  30 * 24 * time.Hour,
 		passwordMin: 8,
@@ -139,11 +140,11 @@ func (s *Service) Login(ctx context.Context, projectID, email, password string) 
 		return nil, "", "", ErrInvalidCredentials
 	}
 
-	access, err := s.tokens.Issue(c.ProjectID, c.ID, s.accessTTL)
+	access, err := s.tokens.Issue(ctx, c.ProjectID, c.ID, "access", s.accessTTL)
 	if err != nil {
 		return nil, "", "", err
 	}
-	refresh, err := s.tokens.Issue(c.ProjectID, c.ID, s.refreshTTL)
+	refresh, err := s.tokens.Issue(ctx, c.ProjectID, c.ID, "refresh", s.refreshTTL)
 	if err != nil {
 		return nil, "", "", err
 	}
@@ -152,7 +153,7 @@ func (s *Service) Login(ctx context.Context, projectID, email, password string) 
 
 // LookupByToken returns the customer bound to a valid access token.
 func (s *Service) LookupByToken(ctx context.Context, projectID, token string) (*domain.Customer, error) {
-	meta, ok := s.tokens.Validate(token)
+	meta, ok := s.tokens.Validate(ctx, token)
 	if !ok || meta.ProjectID != projectID {
 		return nil, ErrInvalidToken
 	}

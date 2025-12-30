@@ -22,6 +22,7 @@ type cartRepo interface {
 	AssignCustomerToAnonymous(ctx context.Context, projectID, anonymousID, customerID string) (*domain.Cart, error)
 	AddLineItem(ctx context.Context, cartID string, product domain.Product, quantity int, snapshot map[string]interface{}) error
 	ChangeLineItemQuantity(ctx context.Context, cartID, lineItemID string, quantity int) error
+	SetState(ctx context.Context, projectID, cartID, state string) error
 }
 
 type productRepo interface {
@@ -86,6 +87,14 @@ func (s *Service) UpdateAnonymous(ctx context.Context, projectID, anonymousID, c
 	return s.updateWithOwner(ctx, projectID, cartID, nil, &anonymousID, in)
 }
 
+func (s *Service) Delete(ctx context.Context, projectID, customerID, cartID string) (*domain.Cart, error) {
+	return s.deleteWithOwner(ctx, projectID, cartID, &customerID, nil)
+}
+
+func (s *Service) DeleteAnonymous(ctx context.Context, projectID, anonymousID, cartID string) (*domain.Cart, error) {
+	return s.deleteWithOwner(ctx, projectID, cartID, nil, &anonymousID)
+}
+
 func (s *Service) updateWithOwner(ctx context.Context, projectID, cartID string, customerID, anonymousID *string, in UpdateInput) (*domain.Cart, error) {
 	if len(in.Actions) == 0 {
 		return nil, errors.New("actions required")
@@ -147,6 +156,30 @@ func (s *Service) updateWithOwner(ctx context.Context, projectID, cartID string,
 		}
 	}
 
+	return s.repo.GetByID(ctx, projectID, cartID)
+}
+
+func (s *Service) deleteWithOwner(ctx context.Context, projectID, cartID string, customerID, anonymousID *string) (*domain.Cart, error) {
+	cart, err := s.repo.GetByID(ctx, projectID, cartID)
+	if err != nil {
+		return nil, err
+	}
+	switch {
+	case customerID != nil:
+		if cart.CustomerID == nil || *cart.CustomerID != *customerID {
+			return nil, domain.ErrNotFound
+		}
+	case anonymousID != nil:
+		if cart.AnonymousID == nil || *cart.AnonymousID != *anonymousID {
+			return nil, domain.ErrNotFound
+		}
+	default:
+		return nil, domain.ErrNotFound
+	}
+
+	if err := s.repo.SetState(ctx, projectID, cartID, "deleted"); err != nil {
+		return nil, err
+	}
 	return s.repo.GetByID(ctx, projectID, cartID)
 }
 
