@@ -266,6 +266,11 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 			resp := buildSearchResponse(products, cats, req)
 			c.JSON(http.StatusOK, resp)
 		})
+		group.GET("/product-discounts", func(c *gin.Context) {
+			_ = mustProject(c)
+			limit, offset := parseLimitOffset(c.Query("limit"), c.Query("offset"))
+			c.JSON(http.StatusOK, buildProductDiscountList(limit, offset))
+		})
 		group.GET("/categories", func(c *gin.Context) {
 			project := mustProject(c)
 			cats, err := deps.CategorySvc.List(c.Request.Context(), project.ID)
