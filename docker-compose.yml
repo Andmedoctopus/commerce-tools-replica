@@ -3,6 +3,9 @@ services:
     extends:
       file: docker-compose.app.yml
       service: db
+    profiles:
+      - dev
+      - prod
     ports:
       - "5432:5432"
 
@@ -10,6 +13,8 @@ services:
     extends:
       file: docker-compose.app.yml
       service: db
+    profiles:
+      - dev
     environment:
       POSTGRES_DB: commerce_test
       POSTGRES_USER: commerce
@@ -28,6 +33,8 @@ services:
     extends:
       file: docker-compose.app.yml
       service: app
+    profiles:
+      - prod
     ports:
       - "8080:8080"
     depends_on:
@@ -44,12 +51,13 @@ services:
       db:
         condition: service_healthy
     command: go run ./cmd/migrate
-    profiles: []
 
   api-dev:
     extends:
       file: docker-compose.app.yml
       service: dev-base
+    profiles:
+      - dev
     command: ["air", "-c", ".air.toml"]
     depends_on:
       db:
@@ -63,6 +71,8 @@ services:
     extends:
       file: docker-compose.app.yml
       service: dev-base
+    profiles:
+      - dev
     command: ["sleep", "infinity"]
     depends_on:
       db:
@@ -72,6 +82,8 @@ services:
 
   pgadmin:
     image: dpage/pgadmin4:9
+    profiles:
+      - dev
     environment:
       PGADMIN_DEFAULT_EMAIL: admin@example.com
       PGADMIN_DEFAULT_PASSWORD: admin
