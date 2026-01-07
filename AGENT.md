@@ -1,56 +1,46 @@
-## commercetools-lite API Plan
+## commercetools-replica current state
 
-Goal: build a partial, commercetools-compatible web API (projects, products, carts, auth) in Go with Postgres. Everything runs via Docker Compose (app + Postgres) for local/dev.
+Partial commercetools-compatible web API (Go + Postgres). Project-scoped routes live under `/:projectKey`.
 
 ### Scope & Compatibility
-- Multitenant: `projects` partition data; all queries/actions scoped by project key.
-- Entities: projects, customers/auth, products, carts (lines, totals). Orders/discounts/inventory deferred.
-- Endpoints (v1, project-scoped `/projects/{projectKey}/...`):
-  - Auth: `POST /customers` (signup), `POST /login` (token), `GET /me`.
-  - Products: `GET /products`, `GET /products/{id}` (optional filter by key/sku).
-  - Carts: `POST /carts` (anonymous or customer), `GET /carts/{id}`, `POST /carts/{id}` (update actions: add/remove/change qty, set customer), `POST /carts/{id}/checkout` placeholder.
-- Error model: consistent JSON envelope; validate IDs and project scope.
+- Multitenant: all reads/writes are scoped by project key.
+- Entities: projects (DB only), customers + tokens, products, categories, carts (lines + totals).
+- CT-shaped responses for customers, products, categories, carts (with some gaps noted below).
 
-### Architecture
-- Go monolith with clear layers: HTTP transport → handlers → services/use-cases → repositories (Postgres).
-- Config via env; structured logging; UTC timestamps; UUID IDs.
-- Migrations: `golang-migrate` (or similar). Seed fixtures for local dev.
-- Testing: unit tests for services; integration tests with Postgres in Docker.
-- API contract: OpenAPI stub or Postman collection (to be generated).
+### HTTP API
+- Health: `GET /healthz`, `GET /readyz`.
+- Auth:
+  - `POST /oauth/:projectKey/customers/token` (form-encoded, `grant_type=password`, scope `manage_project:<key>`).
+  - `POST /oauth/:projectKey/anonymous/token` (form-encoded, `grant_type=client_credentials`).
+  - `POST /oauth/token` returns a static stub response.
+- Customers: `POST /:projectKey/me/signup`, `POST /:projectKey/me/login` (customer + active cart, no tokens), `GET /:projectKey/me` (bearer token).
+- Products: `GET /:projectKey/products`, `GET /:projectKey/products/:id`, `POST /:projectKey/products/search`.
+- Categories: `GET /:projectKey/categories` (limit/offset).
+- Carts:
+  - Raw cart shape: `POST /:projectKey/carts`, `GET /:projectKey/carts/:id`.
+  - CT-style carts: `POST /:projectKey/me/carts`, `POST /:projectKey/me/carts/:id`, `DELETE /:projectKey/me/carts/:id`, `GET /:projectKey/me/active-cart`.
+- Product discounts: `GET /:projectKey/product-discounts` (static demo list).
 
-### Data Model (initial)
-- `projects`: id, key, name, created_at.
-- `customers`: id, project_id FK, email (unique per project), password_hash, created_at.
-- `products`: id, project_id FK, key/sku, name, description, price_cents, currency, attributes JSONB, created_at.
-- `carts`: id, project_id FK, customer_id nullable FK, currency, total_cents, created_at, state.
-- `cart_lines`: id, cart_id FK, product_id FK, quantity, unit_price_cents, total_cents, snapshot JSONB.
+### Search behavior
+- Filters: price range on `variants.prices.centAmount` and exact `categories` filter (accepts category id or key).
+- Sort: `name` or price (field variants supported: `price`, `variants.prices.centAmount`, `variants.prices.value.centAmount`).
+- Defaults: sort by name asc, limit/offset apply after filter/sort.
 
-### Auth
-- Per-project bearer tokens (JWT or signed opaque). Flows: signup/login (email+password), token issuance, middleware enforcing project scope. Anonymous carts allowed without auth via cart ID (optionally `anonymousId`).
-- Password hashing via bcrypt/argon2; store hash only.
+### Cart actions
+- `addLineItem` (requires `sku`, `quantity > 0`), `changeLineItemQuantity` (requires `lineItemId`, `quantity > 0`).
+- Totals recalc on each update; delete sets cart state to `deleted`.
+
+### CSV importer
+- `cmd/importer` auto-detects product vs category CSV and can import a directory (categories first).
+- Projects are created automatically if missing.
+- Category keys are normalized (trim `-type` / `-types`); parent is inferred from `orderHint` if missing.
 
 ### Dev/Infra
-- Docker Compose: `docker-compose.app.yml` holds shared service definitions (`app` build, `dev-base` dev image/volumes/env, `db`). Top-level `docker-compose.yml` wires everything with ports/depends_on and adds `db-test` (extends `db` with its own env/volume/healthcheck), `migrate` (extends `app`, entrypoint `/srv/migrate`, runs before API), `api` (prod server on host `8080`), `api-dev` (hot reload via `air`, exposed on host `8081` to avoid port clashes), `dev` (helper shell), and `pgadmin` on host `5050` preloaded with connections to `db` and `db-test` (passwords saved; master password prompt disabled). No profiles; `make up`/`down` manage the full stack.
-- Dev Go cache: bind-mounted to `./_gocache/mod` and `./_gocache/build` so `docker compose down -v` won’t erase caches.
-- Seeds: `cmd/seed` applies basic demo data (project "demo" + sample products). Use `make seed` (runs inside dev container) after migrations.
-- Makefile: `make run` (dev go run), `make build`, `make test` (brings up `db-test`, runs `go test` inside `dev`), `make migrate`, `make seed`, `make up`/`down` to start/stop services.
-- Local env: `.env.example` for app and DB credentials; default ports for Postgres.
-- Migrations: embedded SQL in `internal/migrate/sql` using `golang-migrate` (iofs + postgres driver); applied via `cmd/migrate` and the `migrate` compose service (before `api`/`api-dev`).
-- Observability: structured logs; basic request metrics later.
-- Health endpoints: `/healthz` and `/readyz` (Kubernetes-style suffix) reserved for probes, separate from business routes.
-- Dev container: `dev` (Dockerfile `dev` target, repo mounted, bash) for running commands inside the compose network; start `dev`/`api-dev` via compose and use `./devenv` to exec. Required context values (e.g., project/auth) are treated as invariants; handlers may panic when missing so recovery returns 500 and logs the issue instead of leaking internal details to clients.
-- Command output etiquette: avoid noisy commands (e.g., `go mod tidy`) unless required for builds; keep terminal output concise when possible.
-- Do not run `gofmt` or formatters on SQL migration files; edit them directly to avoid unintended changes.
+- Docker Compose services: `db`, `db-test`, `migrate`, `api`, `api-dev` (air), `dev`, `pgadmin`.
+- `./devenv` shells into the `dev` container (expects `docker compose --profile dev up -d dev`).
+- `make test` brings up `db-test` and runs `go test ./...` inside `dev`.
 
-### Near-Term Tasks
-1) Scaffold Go module, folder layout (`cmd/api`, `internal/{http,service,repo,domain}`), config loading, logger.
-2) Define DB schema + migrations; add Compose file with app+Postgres; wire DSN/envs.
-3) Implement auth flows (signup/login/token middleware).
-4) Implement product list/detail endpoints.
-5) Implement cart lifecycle (create/update lines/recalc totals/get/checkout stub) with project scoping.
-6) Add API docs stub (OpenAPI) and basic tests (unit + integration via docker-compose).
-
-### CSV Importer Usage
-- Import commercetools product export CSV: `./devenv go run ./cmd/importer -file imports/Products_Export_09-12-25_19-36.csv -project <project-key>`.
-- If the project key is missing, the importer will create it with name equal to the key.
-- The importer resolves/creates the project and upserts products (key/SKU/name/description/price/currency plus image URLs stored in `attributes.images`).
+### Known gaps
+- Orders, inventory, checkout, discounts (beyond the static product-discounts list).
+- `POST /oauth/token` is a stub; no refresh-token exchange.
+- Product list responses are raw arrays (not full CT list objects).
