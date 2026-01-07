@@ -2,6 +2,11 @@
 
 Partial commercetools-compatible API (Go + Postgres), runnable via Docker Compose. Implements customers/auth, products, categories, carts, and search with commercetools-shaped responses where possible.
 
+
+This project is an experiment where I try to avoid editing any code and do it the project with agent. The project is completely "vibe coded".
+
+Agent: `gpt-5.2-codex`
+
 ## Prerequisites
 - Docker + Docker Compose
 - `./devenv` script available (uses the `dev` container)
