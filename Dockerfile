@@ -14,9 +14,6 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     go build -o /bin/migrate ./cmd/migrate
 
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    go build -o /bin/seed ./cmd/seed
-
 FROM golang:1.25-alpine AS dev
 WORKDIR /workspace
 RUN --mount=type=cache,target=/var/cache/apk \
@@ -28,7 +25,6 @@ FROM alpine:3.20
 WORKDIR /srv
 COPY --from=build /bin/api /srv/api
 COPY --from=build /bin/migrate /srv/migrate
-COPY --from=build /bin/seed /srv/seed
 
 ENV HTTP_ADDR=:8080
 ENV DB_DSN=postgres://commerce:commerce@db:5432/commerce?sslmode=disable

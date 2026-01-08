@@ -1,6 +1,6 @@
 APP_NAME=api
 
-.PHONY: run build test up down up-dev down-dev migrate seed
+.PHONY: run build test up down up-dev down-dev migrate
 
 run:
 	docker compose run --rm dev go run ./cmd/api
@@ -17,8 +17,6 @@ test:
 migrate:
 	./devenv go run ./cmd/migrate
 
-seed:
-	./devenv go run ./cmd/seed
 
 up:
 	docker compose --profile prod up --build
