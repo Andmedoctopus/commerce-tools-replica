@@ -48,3 +48,4 @@ Run inside dev container: `./devenv go test ./...`
 - `/me/*` endpoints require bearer tokens from `/oauth/:projectKey/...` token routes.
 - CORS is open to localhost/127.0.0.1 for dev use.
 - Importer downloads product images into `media/<projectKey>/` and stores `/media/...` URLs; Nginx serves `/media` in prod.
+- Importer restores images from `imports/<projectKey>/media.tar.gz` (or the input directory), and writes/updates the archive after import (missing files are downloaded).
