@@ -2,12 +2,21 @@ package importer
 
 import (
 	"context"
+	"crypto/sha1"
 	"encoding/csv"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
+	"net/url"
+	"os"
+	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"time"
 
 	"commercetools-replica/internal/domain"
 )
@@ -33,21 +42,47 @@ type CSVImporter struct {
 	categorySeen    map[string]struct{}
 	categoryIDByKey map[string]string
 	projectID       string
+	projectKey      string
+	mediaRoot       string
+	mediaBaseURL    string
+	downloader      imageDownloader
 	lastKind        string
 }
 
-func NewCSVImporter(r io.Reader, repo ProductWriter, catRepo CategoryWriter, projectID string) *CSVImporter {
+type Option func(*CSVImporter)
+
+func WithMedia(root, baseURL string) Option {
+	return func(i *CSVImporter) {
+		i.mediaRoot = strings.TrimSpace(root)
+		i.mediaBaseURL = normalizeBaseURL(baseURL)
+	}
+}
+
+func WithDownloader(d imageDownloader) Option {
+	return func(i *CSVImporter) {
+		i.downloader = d
+	}
+}
+
+func NewCSVImporter(r io.Reader, repo ProductWriter, catRepo CategoryWriter, projectID, projectKey string, opts ...Option) *CSVImporter {
 	csvr := csv.NewReader(r)
 	csvr.FieldsPerRecord = -1 // rows may have trailing commas
-	return &CSVImporter{
+	imp := &CSVImporter{
 		reader:          csvr,
 		productRepo:     repo,
 		categoryRepo:    catRepo,
 		categorySeen:    make(map[string]struct{}),
 		categoryIDByKey: make(map[string]string),
 		projectID:       projectID,
+		projectKey:      projectKey,
+		mediaBaseURL:    "/media",
+		downloader:      newHTTPImageDownloader(),
 		lastKind:        KindProducts,
 	}
+	for _, opt := range opts {
+		opt(imp)
+	}
+	return imp
 }
 
 type csvRow struct {
@@ -168,7 +203,15 @@ func (i *CSVImporter) save(ctx context.Context, row *csvRow) error {
 
 	attrs := map[string]interface{}{}
 	if len(row.ImageURLs) > 0 {
-		attrs["images"] = row.ImageURLs
+		images := row.ImageURLs
+		if i.mediaRoot != "" {
+			local, err := i.downloadImages(ctx, row.ImageURLs)
+			if err != nil {
+				return err
+			}
+			images = local
+		}
+		attrs["images"] = images
 	}
 	catKeys := pickCategoryKeys(row)
 	if len(catKeys) > 0 {
@@ -200,6 +243,197 @@ func (i *CSVImporter) save(ctx context.Context, row *csvRow) error {
 	_, err = i.productRepo.Upsert(ctx, p)
 	if err != nil {
 		return fmt.Errorf("upsert product %q: %w", row.Key, err)
+	}
+	return nil
+}
+
+func (i *CSVImporter) downloadImages(ctx context.Context, urls []string) ([]string, error) {
+	if i.mediaRoot == "" {
+		return urls, nil
+	}
+	if i.projectKey == "" {
+		return nil, errors.New("project key required for media downloads")
+	}
+	if i.downloader == nil {
+		return nil, errors.New("image downloader unavailable")
+	}
+	projectDir := filepath.Join(i.mediaRoot, i.projectKey)
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		return nil, fmt.Errorf("create media dir: %w", err)
+	}
+
+	baseURL := i.mediaBaseURL
+	if baseURL == "" {
+		baseURL = "/media"
+	}
+
+	cleaned := make([]string, 0, len(urls))
+	for _, raw := range urls {
+		raw = strings.TrimSpace(raw)
+		if raw == "" {
+			continue
+		}
+		cleaned = append(cleaned, raw)
+	}
+	if len(cleaned) == 0 {
+		return nil, nil
+	}
+
+	results := make([]string, len(cleaned))
+	type job struct {
+		idx int
+		url string
+	}
+
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	jobs := make(chan job)
+	errCh := make(chan error, 1)
+
+	sendErr := func(err error) {
+		select {
+		case errCh <- err:
+			cancel()
+		default:
+		}
+	}
+
+	worker := func() {
+		for j := range jobs {
+			if ctx.Err() != nil {
+				return
+			}
+			filename := imageFilename(j.url)
+			dest := filepath.Join(projectDir, filename)
+			if _, err := os.Stat(dest); err == nil {
+				results[j.idx] = buildMediaURL(baseURL, i.projectKey, filename)
+				continue
+			} else if !errors.Is(err, os.ErrNotExist) {
+				sendErr(fmt.Errorf("stat image: %w", err))
+				return
+			}
+			if err := i.downloader.Download(ctx, j.url, dest); err != nil {
+				sendErr(err)
+				return
+			}
+			results[j.idx] = buildMediaURL(baseURL, i.projectKey, filename)
+		}
+	}
+
+	workers := 5
+	if workers < 1 {
+		workers = 1
+	}
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for w := 0; w < workers; w++ {
+		go func() {
+			defer wg.Done()
+			worker()
+		}()
+	}
+
+	go func() {
+		for idx, u := range cleaned {
+			select {
+			case <-ctx.Done():
+				break
+			case jobs <- job{idx: idx, url: u}:
+			}
+		}
+		close(jobs)
+	}()
+
+	wg.Wait()
+	select {
+	case err := <-errCh:
+		return nil, err
+	default:
+	}
+
+	return results, nil
+}
+
+func buildMediaURL(baseURL, projectKey, filename string) string {
+	baseURL = normalizeBaseURL(baseURL)
+	if baseURL == "" {
+		return "/" + path.Join(projectKey, filename)
+	}
+	return baseURL + "/" + path.Join(projectKey, filename)
+}
+
+func normalizeBaseURL(base string) string {
+	base = strings.TrimSpace(base)
+	if base == "" {
+		return ""
+	}
+	if !strings.HasPrefix(base, "/") {
+		base = "/" + base
+	}
+	return strings.TrimRight(base, "/")
+}
+
+func imageFilename(rawURL string) string {
+	ext := ".img"
+	if parsed, err := url.Parse(rawURL); err == nil {
+		if parsed.Path != "" {
+			if e := strings.ToLower(path.Ext(parsed.Path)); e != "" && len(e) <= 10 {
+				ext = e
+			}
+		}
+	}
+	sum := sha1.Sum([]byte(rawURL))
+	return hex.EncodeToString(sum[:]) + ext
+}
+
+type imageDownloader interface {
+	Download(ctx context.Context, srcURL, destPath string) error
+}
+
+type httpImageDownloader struct {
+	client *http.Client
+}
+
+func newHTTPImageDownloader() *httpImageDownloader {
+	return &httpImageDownloader{
+		client: &http.Client{Timeout: 30 * time.Second},
+	}
+}
+
+func (d *httpImageDownloader) Download(ctx context.Context, srcURL, destPath string) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, srcURL, nil)
+	if err != nil {
+		return fmt.Errorf("build request: %w", err)
+	}
+	resp, err := d.client.Do(req)
+	if err != nil {
+		return fmt.Errorf("download %s: %w", srcURL, err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("download %s: status %s", srcURL, resp.Status)
+	}
+
+	dir := filepath.Dir(destPath)
+	tmp, err := os.CreateTemp(dir, ".img-*")
+	if err != nil {
+		return fmt.Errorf("create temp file: %w", err)
+	}
+	defer func() {
+		_ = tmp.Close()
+		_ = os.Remove(tmp.Name())
+	}()
+
+	if _, err := io.Copy(tmp, resp.Body); err != nil {
+		return fmt.Errorf("write image: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("close temp file: %w", err)
+	}
+	if err := os.Rename(tmp.Name(), destPath); err != nil {
+		return fmt.Errorf("finalize image: %w", err)
 	}
 	return nil
 }

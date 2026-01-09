@@ -43,7 +43,7 @@ func TestCSVImporter_Run(t *testing.T) {
 
 	repo := &stubProductRepo{}
 	catRepo := &stubCategoryRepo{}
-	imp := NewCSVImporter(strings.NewReader(csvData), repo, catRepo, "project-123")
+	imp := NewCSVImporter(strings.NewReader(csvData), repo, catRepo, "project-123", "project-123", WithMedia("", ""))
 
 	count, err := imp.Run(context.Background())
 	if err != nil {
@@ -86,7 +86,7 @@ succulents,Succulents,,,,"",,Meta desc succ
 ,Pots,pots,,4,,,
 `
 	catRepo := &stubCategoryRepo{}
-	imp := NewCSVImporter(strings.NewReader(csvData), nil, catRepo, "project-123")
+	imp := NewCSVImporter(strings.NewReader(csvData), nil, catRepo, "project-123", "project-123", WithMedia("", ""))
 
 	count, err := imp.Run(context.Background())
 	if err != nil {

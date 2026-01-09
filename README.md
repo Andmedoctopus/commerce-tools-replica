@@ -47,3 +47,4 @@ Run inside dev container: `./devenv go test ./...`
 - Categories store parent key and build ancestors on read; no full tree materialization.
 - `/me/*` endpoints require bearer tokens from `/oauth/:projectKey/...` token routes.
 - CORS is open to localhost/127.0.0.1 for dev use.
+- Importer downloads product images into `media/<projectKey>/` and stores `/media/...` URLs; Nginx serves `/media` in prod.

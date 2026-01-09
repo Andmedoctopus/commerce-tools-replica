@@ -72,15 +72,33 @@ func main() {
 
 	productRepo := product.NewPostgres(pool, logger)
 	categoryRepo := category.NewPostgres(pool)
+	mediaRoot := envOrDefault("MEDIA_ROOT", "media")
+	mediaBaseURL := envOrDefault("MEDIA_BASE_URL", "media")
 
 	if info.IsDir() {
-		if err := importDirectory(ctx, inputPath, projectKey, proj.ID, productRepo, categoryRepo); err != nil {
+		runner := importerRunner{
+			projectKey:   projectKey,
+			projectID:    proj.ID,
+			productRepo:  productRepo,
+			categoryRepo: categoryRepo,
+			mediaRoot:    mediaRoot,
+			mediaBaseURL: mediaBaseURL,
+		}
+		if err := runner.importDirectory(ctx, inputPath); err != nil {
 			log.Fatalf("import directory: %v", err)
 		}
 		return
 	}
 
-	count, kind, dur, err := importFile(ctx, inputPath, proj.ID, productRepo, categoryRepo)
+	runner := importerRunner{
+		projectKey:   projectKey,
+		projectID:    proj.ID,
+		productRepo:  productRepo,
+		categoryRepo: categoryRepo,
+		mediaRoot:    mediaRoot,
+		mediaBaseURL: mediaBaseURL,
+	}
+	count, kind, dur, err := runner.importFile(ctx, inputPath)
 	if err != nil {
 		log.Fatalf("import failed: %v", err)
 	}
@@ -100,7 +118,16 @@ func ensureProject(ctx context.Context, repo project.Repository, key string) (*d
 	return created, nil
 }
 
-func importDirectory(ctx context.Context, dir, projectKey, projectID string, productRepo importer.ProductWriter, categoryRepo importer.CategoryWriter) error {
+type importerRunner struct {
+	projectKey   string
+	projectID    string
+	productRepo  importer.ProductWriter
+	categoryRepo importer.CategoryWriter
+	mediaRoot    string
+	mediaBaseURL string
+}
+
+func (r importerRunner) importDirectory(ctx context.Context, dir string) error {
 	catFiles, productFiles, err := discoverFiles(dir)
 	if err != nil {
 		return err
@@ -114,7 +141,7 @@ func importDirectory(ctx context.Context, dir, projectKey, projectID string, pro
 	start := time.Now()
 	total := 0
 	for _, path := range ordered {
-		count, kind, dur, err := importFile(ctx, path, projectID, productRepo, categoryRepo)
+		count, kind, dur, err := r.importFile(ctx, path)
 		if err != nil {
 			return fmt.Errorf("import %s: %w", path, err)
 		}
@@ -122,18 +149,18 @@ func importDirectory(ctx context.Context, dir, projectKey, projectID string, pro
 		fmt.Printf("Imported %d %s from %s in %s\n", count, kind, path, dur.Truncate(time.Millisecond))
 	}
 
-	fmt.Printf("Imported %d records from %d files into project %s in %s\n", total, len(ordered), projectKey, time.Since(start).Truncate(time.Millisecond))
+	fmt.Printf("Imported %d records from %d files into project %s in %s\n", total, len(ordered), r.projectKey, time.Since(start).Truncate(time.Millisecond))
 	return nil
 }
 
-func importFile(ctx context.Context, path, projectID string, productRepo importer.ProductWriter, categoryRepo importer.CategoryWriter) (int, string, time.Duration, error) {
+func (r importerRunner) importFile(ctx context.Context, path string) (int, string, time.Duration, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return 0, "", 0, fmt.Errorf("open file: %w", err)
 	}
 	defer f.Close()
 
-	imp := importer.NewCSVImporter(f, productRepo, categoryRepo, projectID)
+	imp := importer.NewCSVImporter(f, r.productRepo, r.categoryRepo, r.projectID, r.projectKey, importer.WithMedia(r.mediaRoot, r.mediaBaseURL))
 
 	start := time.Now()
 	count, err := imp.Run(ctx)
@@ -142,6 +169,13 @@ func importFile(ctx context.Context, path, projectID string, productRepo importe
 	}
 
 	return count, imp.Kind(), time.Since(start), nil
+}
+
+func envOrDefault(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
 
 func discoverFiles(dir string) (categories []string, products []string, err error) {
