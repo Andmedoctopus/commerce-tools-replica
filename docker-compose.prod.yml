@@ -40,10 +40,11 @@ services:
       - 443:443
     volumes:
       - ./media:/srv/media:ro
-      - ./nginx/conf/:/etc/nginx/conf.d/:ro
+      - ./nginx/conf.d/:/etc/nginx/conf.d/:ro
       - ./nginx/sites-enabled:/etc/nginx/sites-enabled
       - ./nginx/sites-available:/etc/nginx/sites-available
       - ./certbot/www/:/var/www/certbot/:ro
+      - /var/log/nginx:/var/log/nginx
 
   certbot:
     image: certbot/certbot:latest
