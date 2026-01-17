@@ -39,11 +39,12 @@ services:
       - 80:80
       - 443:443
     volumes:
-      - ./media:/srv/media:ro
-      - ./nginx/conf.d/:/etc/nginx/conf.d/:ro
+      - ./media:/srv/media
+      - ./nginx/conf.d/:/etc/nginx/conf.d/
       - ./nginx/sites-enabled:/etc/nginx/sites-enabled
       - ./nginx/sites-available:/etc/nginx/sites-available
-      - ./certbot/www/:/var/www/certbot/:ro
+      - ./certbot/www/:/var/www/certbot/
+      - ./certbot/conf/:/etc/nginx/ssl/
       - /var/log/nginx:/var/log/nginx
 
   certbot:
