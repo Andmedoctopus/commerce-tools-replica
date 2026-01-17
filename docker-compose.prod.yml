@@ -11,6 +11,7 @@ services:
     image: ${API_IMAGE:-ghcr.io/andmedoctopus/commerce-tools-replica:latest}
     volumes:
       - ./media:/srv/media
+      - ./imports:/srv/imports
     depends_on:
       db:
         condition: service_healthy

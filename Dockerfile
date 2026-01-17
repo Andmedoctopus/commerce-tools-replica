@@ -9,10 +9,10 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 COPY . .
 
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    go build -o /bin/api ./cmd/api
-
-RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    go build -o /bin/migrate ./cmd/migrate
+    mkdir /app/bin && \
+    go build -o /app/bin/api ./cmd/api && \
+    go build -o /app/bin/migrate ./cmd/migrate && \
+    go build -o /app/bin/importer ./cmd/importer
 
 FROM golang:1.25-alpine AS dev
 WORKDIR /workspace
@@ -23,8 +23,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
 
 FROM alpine:3.20 AS prod
 WORKDIR /srv
-COPY --from=build /bin/api /srv/api
-COPY --from=build /bin/migrate /srv/migrate
+COPY --from=build /app/bin/* /srv/
 
 ENV HTTP_ADDR=:8080
 ENV DB_DSN=postgres://commerce:commerce@db:5432/commerce?sslmode=disable
