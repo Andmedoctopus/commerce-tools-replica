@@ -18,8 +18,8 @@ type Server struct {
 }
 
 // New builds a Server with basic routes.
-func New(addr string, logger *log.Logger, db *pgxpool.Pool, deps Deps) (*Server, error) {
-	router, err := buildRouter(logger, db, deps)
+func New(addr string, logger *log.Logger, db *pgxpool.Pool, deps Deps, fileURLHost string) (*Server, error) {
+	router, err := buildRouter(logger, db, deps, fileURLHost)
 	if err != nil {
 		return nil, err
 	}

@@ -13,6 +13,7 @@ import (
 	anonymoussvc "commercetools-replica/internal/service/anonymous"
 	cartsvc "commercetools-replica/internal/service/cart"
 	customersvc "commercetools-replica/internal/service/customer"
+
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -62,7 +63,7 @@ type Deps struct {
 	AnonymousSvc anonymousService
 }
 
-func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, error) {
+func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps, fileURLHost string) (*gin.Engine, error) {
 	if deps.ProjectRepo == nil {
 		return nil, errors.New("ProjectRepo is required")
 	}
@@ -221,7 +222,7 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 			}
 			var resp []ctProduct
 			for _, p := range products {
-				resp = append(resp, toCTProduct(p))
+				resp = append(resp, toCTProduct(logger, p, fileURLHost))
 			}
 			c.JSON(http.StatusOK, resp)
 		})
@@ -239,7 +240,7 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps) (*gin.Engine, 
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "get product failed"})
 				return
 			}
-			c.JSON(http.StatusOK, toCTProduct(*p))
+			c.JSON(http.StatusOK, toCTProduct(logger, *p, fileURLHost))
 		})
 		group.POST("/products/search", func(c *gin.Context) {
 			project := mustProject(c)

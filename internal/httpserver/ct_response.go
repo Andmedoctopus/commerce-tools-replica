@@ -1,12 +1,14 @@
 package httpserver
 
 import (
+	"fmt"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"commercetools-replica/internal/domain"
+	"log"
 )
 
 type ctProduct struct {
@@ -274,7 +276,7 @@ func toCTCategory(c domain.Category, parentID string, ancestors []ctRef) ctCateg
 	}
 }
 
-func toCTProduct(p domain.Product) ctProduct {
+func toCTProduct(logger *log.Logger, p domain.Product, fileURLHost string) ctProduct {
 	name := map[string]string{"en": p.Name}
 	desc := map[string]string{}
 	if p.Description != "" {
@@ -286,7 +288,7 @@ func toCTProduct(p domain.Product) ctProduct {
 		slug["en"] = strings.ReplaceAll(strings.ToLower(p.Key), " ", "-")
 	}
 
-	images := extractImages(p.Attributes)
+	images := extractImages(logger, p.Attributes, fileURLHost)
 
 	variant := ctVariant{
 		ID:         1,
@@ -336,7 +338,7 @@ func toCTProduct(p domain.Product) ctProduct {
 	}
 }
 
-func extractImages(attrs map[string]interface{}) []ctImage {
+func extractImages(logger *log.Logger, attrs map[string]interface{}, fileURLHost string) []ctImage {
 	raw, ok := attrs["images"]
 	if !ok {
 		return nil
@@ -357,7 +359,9 @@ func extractImages(attrs map[string]interface{}) []ctImage {
 		if strings.TrimSpace(u) == "" {
 			continue
 		}
-		images = append(images, ctImage{URL: u})
+		var url = fmt.Sprintf("%s%s", fileURLHost, u)
+		logger.Printf(">>> URL %s ... %s", url, fileURLHost)
+		images = append(images, ctImage{URL: url})
 	}
 	return images
 }

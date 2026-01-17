@@ -28,6 +28,7 @@ import (
 func main() {
 	cfg := config.FromEnv()
 	logger := log.New(os.Stdout, "[api] ", log.LstdFlags|log.LUTC|log.Lshortfile)
+	logger.Println(">>>>>>> config %v", cfg)
 
 	ctx := context.Background()
 	dbpool, err := db.Connect(ctx, cfg.DBConnString)
@@ -55,7 +56,7 @@ func main() {
 		CategorySvc:  categoryService,
 		CustomerSvc:  customerService,
 		AnonymousSvc: anonymousService,
-	})
+	}, cfg.FileURLHost)
 	if err != nil {
 		logger.Fatalf("init server: %v", err)
 	}

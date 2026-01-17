@@ -6,6 +6,7 @@ services:
       SHUTDOWN_TIMEOUT_SECONDS: "10"
       MEDIA_ROOT: "/srv/media"
       MEDIA_BASE_URL: "media"
+      FILE_URL_HOST: ${FILE_URL_HOST:-localhost:8080}
 
   app:
     extends:
@@ -24,6 +25,7 @@ services:
       SHUTDOWN_TIMEOUT_SECONDS: "10"
       MEDIA_ROOT: "/workspace/media"
       MEDIA_BASE_URL: "media"
+      FILE_URL_HOST: localhost:8080
     volumes:
       - .:/workspace
       - ./_gocache/mod:/go/pkg/mod

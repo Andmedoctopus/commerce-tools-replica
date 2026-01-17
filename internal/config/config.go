@@ -11,6 +11,7 @@ type Config struct {
 	HTTPAddr        string
 	DBConnString    string
 	ShutdownTimeout time.Duration
+	FileURLHost     string
 }
 
 // FromEnv builds Config with defaults, overridden by environment variables.
@@ -19,6 +20,7 @@ func FromEnv() Config {
 		HTTPAddr:        envOrDefault("HTTP_ADDR", ":8080"),
 		DBConnString:    envOrDefault("DB_DSN", "postgres://commerce:commerce@localhost:5432/commerce?sslmode=disable"),
 		ShutdownTimeout: envDuration("SHUTDOWN_TIMEOUT_SECONDS", 10*time.Second),
+		FileURLHost:     envOrDefault("FILE_URL_HOST", ""),
 	}
 }
 
