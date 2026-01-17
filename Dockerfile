@@ -4,7 +4,7 @@ WORKDIR /app
 COPY go.mod ./
 # Copying go.sum if present will allow cached downloads; optional now.
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
-    go mod download || true
+    go mod download
 
 COPY . .
 
@@ -21,7 +21,7 @@ RUN --mount=type=cache,target=/var/cache/apk \
 RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache/go-build \
     GOBIN=/usr/local/bin go install github.com/air-verse/air@v1.63.4
 
-FROM alpine:3.20
+FROM alpine:3.20 AS prod
 WORKDIR /srv
 COPY --from=build /bin/api /srv/api
 COPY --from=build /bin/migrate /srv/migrate

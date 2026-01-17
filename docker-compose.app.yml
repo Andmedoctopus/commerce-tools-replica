@@ -10,6 +10,7 @@ services:
   app:
     extends:
       service: app-base
+      target: prod
     build: .
 
   dev-base:
