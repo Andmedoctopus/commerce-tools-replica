@@ -28,7 +28,3 @@ COPY --from=build /app/bin/* /srv/
 ENV HTTP_ADDR=:8080
 ENV DB_DSN=postgres://commerce:commerce@db:5432/commerce?sslmode=disable
 ENV SHUTDOWN_TIMEOUT_SECONDS=10
-
-EXPOSE 8080
-
-ENTRYPOINT ["/srv/api"]

@@ -15,7 +15,7 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    entrypoint: ["/srv/migrate"]
+    command: /srv/migrate
 
   api:
     extends:
@@ -29,6 +29,7 @@ services:
         condition: service_completed_successfully
       db:
         condition: service_healthy
+    command: /srv/api
 
   nginx:
     image: nginx:1.27-alpine
