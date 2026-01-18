@@ -360,7 +360,7 @@ func extractImages(logger *log.Logger, attrs map[string]interface{}, fileURLHost
 			continue
 		}
 		var url = fmt.Sprintf("%s%s", fileURLHost, u)
-		logger.Printf(">>> URL %s ... %s", url, fileURLHost)
+
 		images = append(images, ctImage{URL: url})
 	}
 	return images

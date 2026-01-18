@@ -1,6 +1,7 @@
 package httpserver
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 	"time"
@@ -88,7 +89,7 @@ type cartLineSnapshot struct {
 	Images      []string
 }
 
-func toCTCart(cart domain.Cart, customer *domain.Customer) ctCart {
+func toCTCart(cart domain.Cart, customer *domain.Customer, fileURLHost string) ctCart {
 	state := strings.TrimSpace(cart.State)
 	if state == "" {
 		state = "Active"
@@ -129,7 +130,7 @@ func toCTCart(cart domain.Cart, customer *domain.Customer) ctCart {
 			currency = cart.Currency
 		}
 
-		images := imagesFromURLs(snap.Images)
+		images := imagesFromURLs(snap.Images, fileURLHost)
 		variant := ctVariant{
 			ID:         1,
 			SKU:        snap.SKU,
@@ -285,7 +286,7 @@ func parseImageList(raw interface{}) []string {
 	}
 }
 
-func imagesFromURLs(urls []string) []ctImage {
+func imagesFromURLs(urls []string, fileURLHost string) []ctImage {
 	if len(urls) == 0 {
 		return nil
 	}
@@ -294,7 +295,9 @@ func imagesFromURLs(urls []string) []ctImage {
 		if strings.TrimSpace(u) == "" {
 			continue
 		}
-		images = append(images, ctImage{URL: u})
+		var url = fmt.Sprintf("%s%s", fileURLHost, u)
+
+		images = append(images, ctImage{URL: url})
 	}
 	return images
 }

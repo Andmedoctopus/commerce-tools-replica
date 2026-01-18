@@ -203,7 +203,7 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps, fileURLHost st
 					return
 				}
 			} else {
-				ct := toCTCart(*cart, customer)
+				ct := toCTCart(*cart, customer, fileURLHost)
 				cartResp = &ct
 			}
 
@@ -321,7 +321,7 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps, fileURLHost st
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-			c.JSON(http.StatusCreated, toCTCart(*cart, actor.Customer))
+			c.JSON(http.StatusCreated, toCTCart(*cart, actor.Customer, fileURLHost))
 		})
 		group.POST("/me/carts/:id", func(c *gin.Context) {
 			project := mustProject(c)
@@ -351,7 +351,7 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps, fileURLHost st
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-			c.JSON(http.StatusOK, toCTCart(*cart, actor.Customer))
+			c.JSON(http.StatusOK, toCTCart(*cart, actor.Customer, fileURLHost))
 		})
 		group.DELETE("/me/carts/:id", func(c *gin.Context) {
 			project := mustProject(c)
@@ -376,7 +376,7 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps, fileURLHost st
 				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 				return
 			}
-			c.JSON(http.StatusOK, toCTCart(*cart, actor.Customer))
+			c.JSON(http.StatusOK, toCTCart(*cart, actor.Customer, fileURLHost))
 		})
 		group.GET("/me/active-cart", func(c *gin.Context) {
 			project := mustProject(c)
@@ -400,7 +400,7 @@ func buildRouter(logger *log.Logger, db *pgxpool.Pool, deps Deps, fileURLHost st
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "get active cart failed"})
 				return
 			}
-			c.JSON(http.StatusOK, toCTCart(*cart, actor.Customer))
+			c.JSON(http.StatusOK, toCTCart(*cart, actor.Customer, fileURLHost))
 		})
 		group.GET("/carts/:id", func(c *gin.Context) {
 			project := mustProject(c)
