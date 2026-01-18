@@ -6,7 +6,7 @@ services:
       SHUTDOWN_TIMEOUT_SECONDS: "10"
       MEDIA_ROOT: "/srv/media"
       MEDIA_BASE_URL: "media"
-      FILE_URL_HOST: ${FILE_URL_HOST:-localhost:8080}
+      FILE_URL_HOST: ${FILE_URL_HOST:-http://localhost:8080}
 
   app:
     extends:
@@ -20,12 +20,12 @@ services:
       target: dev
     working_dir: /workspace
     environment:
-      HTTP_ADDR: ":8080"
+      HTTP_ADDR: ":8081"
       DB_DSN: "postgres://commerce:commerce@db:5432/commerce?sslmode=disable"
       SHUTDOWN_TIMEOUT_SECONDS: "10"
       MEDIA_ROOT: "/workspace/media"
       MEDIA_BASE_URL: "media"
-      FILE_URL_HOST: localhost:8080
+      FILE_URL_HOST: http://localhost:8080
     volumes:
       - .:/workspace
       - ./_gocache/mod:/go/pkg/mod
