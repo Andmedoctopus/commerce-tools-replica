@@ -15,6 +15,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
     go build -o /app/bin/importer ./cmd/importer
 
 FROM golang:1.25-alpine AS dev
+RUN apk update && apk add curl
 WORKDIR /workspace
 RUN --mount=type=cache,target=/var/cache/apk \
     apk add --no-cache git bash build-base
@@ -22,6 +23,7 @@ RUN --mount=type=cache,target=/go/pkg/mod --mount=type=cache,target=/root/.cache
     GOBIN=/usr/local/bin go install github.com/air-verse/air@v1.63.4
 
 FROM alpine:3.20 AS prod
+RUN apk update && apk add curl
 WORKDIR /srv
 COPY --from=build /app/bin/* /srv/
 
