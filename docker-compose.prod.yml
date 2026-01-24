@@ -31,7 +31,7 @@ services:
         condition: service_healthy
     command: /srv/api
     healthcheck:
-      test: curl -f localhost:8081/readyz
+      test: curl -f localhost:8080/readyz
       interval: 30s
       timeout: 5s
       retries: 3
