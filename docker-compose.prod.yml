@@ -3,6 +3,8 @@ services:
     extends:
       file: docker-compose.app.yml
       service: db
+    networks:
+      - ctrapp
 
   migrate:
     extends:
@@ -16,6 +18,8 @@ services:
       db:
         condition: service_healthy
     command: /srv/migrate
+    networks:
+      - ctrapp
 
   api:
     extends:
@@ -36,6 +40,8 @@ services:
       timeout: 5s
       retries: 3
       start_period: 10s
+    networks:
+      - ctrapp
 
   ctr-nginx:
     image: nginx:1.27-alpine
@@ -51,6 +57,12 @@ services:
       - ./nginx/sites-enabled:/etc/nginx/sites-enabled
       - ./nginx/sites-available:/etc/nginx/sites-available
       - /var/log/nginx:/var/log/nginx
+    networks:
+      - ctrapp
 
 volumes:
   db_data:
+
+networks:
+  ctrapp:
+    external: true
